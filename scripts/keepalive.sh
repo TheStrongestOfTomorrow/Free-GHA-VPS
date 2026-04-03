@@ -8,7 +8,8 @@
 #  - Service auto-restart
 #  - Session extension support
 # ============================================================
-set -euo pipefail
+# NO set -euo pipefail — CI tasks use pipes and failing commands
+# Error handling is done per-command with || fallbacks
 
 DURATION="${1:-30}"
 ACTIVE_MINUTES=$((DURATION - 2))

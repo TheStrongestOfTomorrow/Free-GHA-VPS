@@ -1,0 +1,136 @@
+name: 🛑 Stop Session
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Which session to stop'
+        required: true
+        type: choice
+        options:
+          - 'vps'
+          - 'code-server'
+          - 'web-host'
+          - 'all'
+      save_data:
+        description: 'Save data before stopping?'
+        required: false
+        default: true
+        type: boolean
+  repository_dispatch:
+    types: [stop_session]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  stop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: 🔄 Normalize Inputs
+        run: |
+          TARGET="${{ github.event.inputs.target }}"
+          SAVE="${{ github.event.inputs.save_data }}"
+          TARGET="${TARGET:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.target // "all"' 2>/dev/null)}"
+          SAVE="${SAVE:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.save_data // "true"' 2>/dev/null)}"
+          TARGET="${TARGET:-all}"
+          SAVE="${SAVE:-true}"
+          echo "target=$TARGET" >> $GITHUB_ENV
+          echo "save_data=$SAVE" >> $GITHUB_ENV
+          echo "🎯 Stopping: $TARGET | Save data: $SAVE"
+
+      - name: 📨 Notify: Stopping Session
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          chmod +x scripts/notify.sh
+          bash scripts/notify.sh "stop" \
+            "🛑 Stopping ${{ env.target }} session" \
+            "Shutting down the ${{ env.target }} session now...\n💾 Save data: ${{ env.save_data }}" \
+            "15105570"
+
+      - name: 🛑 Cancel Running Workflows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TARGET="${{ env.target }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  🛑  STOPPING SESSION: ${TARGET}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          # Map target to workflow file names
+          if [ "$TARGET" = "vps" ] || [ "$TARGET" = "all" ]; then
+            WORKFLOW_FILES=".github/workflows/vps.yml"
+          fi
+          if [ "$TARGET" = "code-server" ] || [ "$TARGET" = "all" ]; then
+            WORKFLOW_FILES="${WORKFLOW_FILES:-} .github/workflows/code-server.yml"
+          fi
+          if [ "$TARGET" = "web-host" ] || [ "$TARGET" = "all" ]; then
+            WORKFLOW_FILES="${WORKFLOW_FILES:-} .github/workflows/web-host.yml"
+          fi
+
+          CANCELLED=0
+
+          for WF in $WORKFLOW_FILES; do
+            WF_NAME=$(basename "$WF" .yml)
+            echo ""
+            echo "🔍 Checking: $WF_NAME"
+
+            # Get active runs for this workflow (status=in_progress or status=queued)
+            RUNS=$(gh run list --workflow="$WF" --status="in_progress" --json databaseId,status,createdAt --limit 5 2>/dev/null || echo "[]")
+            QUEUED=$(gh run list --workflow="$WF" --status="queued" --json databaseId,status,createdAt --limit 5 2>/dev/null || echo "[]")
+
+            ALL_RUNS=$(echo "$RUNS $QUEUED" | jq -s '.[0] + .[1]' 2>/dev/null || echo "[]")
+
+            if [ "$ALL_RUNS" = "null" ] || [ "$ALL_RUNS" = "[]" ]; then
+              echo "   No active runs"
+              continue
+            fi
+
+            echo "$ALL_RUNS" | jq -r '.[] | .databaseId' 2>/dev/null | while read -r RUN_ID; do
+              if [ -n "$RUN_ID" ]; then
+                echo "   Cancelling run $RUN_ID..."
+                gh run cancel "$RUN_ID" 2>/dev/null && echo "   ✅ Cancelled!" || echo "   ⚠️  Failed to cancel"
+                CANCELLED=$((CANCELLED + 1))
+              fi
+            done
+          done
+
+          # Also cancel keepalive-related runs
+          echo ""
+          echo "🔍 Checking keepalive runs..."
+          KEEPALIVE_RUNS=$(gh run list --status="in_progress" --json databaseId,name --limit 10 2>/dev/null || echo "[]")
+          echo "$KEEPALIVE_RUNS" | jq -r '.[] | select(.name | test("Code-Server|VPS|Web Host|Free GHA")) | .databaseId' 2>/dev/null | while read -r RUN_ID; do
+            if [ -n "$RUN_ID" ]; then
+              echo "   Cancelling run $RUN_ID..."
+              gh run cancel "$RUN_ID" 2>/dev/null && echo "   ✅ Cancelled!" || true
+            fi
+          done
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  ✅ Stop signal sent!"
+          if [ "$CANCELLED" -gt 0 ]; then
+            echo "  🛑 Cancelled $CANCELLED workflow run(s)"
+          else
+            echo "  ℹ️  No active runs found (may have already ended)"
+          fi
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+      - name: 📨 Notify: Session Stopped
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          chmod +x scripts/notify.sh
+          bash scripts/notify.sh "end" \
+            "🛑 ${{ env.target }} session stopped" \
+            "The ${{ env.target }} session has been terminated.\n💾 Data was preserved on the runner's final cleanup." \
+            "15105570"
