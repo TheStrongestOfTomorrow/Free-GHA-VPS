@@ -1,0 +1,90 @@
+name: ⏰ Extend Session
+
+on:
+  workflow_dispatch:
+    inputs:
+      extra_minutes:
+        description: 'Extra minutes to add (max 30 per extension)'
+        required: false
+        default: '30'
+        type: string
+  repository_dispatch:
+    types: [extend_session]
+
+permissions:
+  contents: write
+
+jobs:
+  extend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── NORMALIZE INPUTS ──────────────────────────────────────
+      - name: 🔄 Normalize Inputs
+        run: |
+          MINUTES="${{ github.event.inputs.extra_minutes }}"
+          MINUTES="${MINUTES:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.extra_minutes // "30"' 2>/dev/null)}"
+          MINUTES="${MINUTES:-30}"
+          echo "extra_minutes=$MINUTES" >> $GITHUB_ENV
+          echo "✅ Extension: +${MINUTES} minutes"
+
+      - name: 📨 Notify: Extension Triggered
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          chmod +x scripts/notify.sh
+          bash scripts/notify.sh "extend" \
+            "⏰ Session Extension Triggered" \
+            "Adding ${extra_minutes} minutes to the active session..." \
+            "10181040"
+
+      - name: 📡 Send Extension Signal
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TIMESTAMP=$(date +%s)
+          BRANCH="vps-extend-${TIMESTAMP}"
+          MINUTES="${extra_minutes}"
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  ⏰  SENDING SESSION EXTENSION SIGNAL"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "  ➕ Adding: ${MINUTES} minutes"
+          echo "  📡 Signal: ${BRANCH}"
+
+          git checkout -b "$BRANCH"
+          echo "${TIMESTAMP}|${MINUTES}" > .vps-extend-signal
+          git add .vps-extend-signal
+          git commit -m "⏰ Extend session +${MINUTES}min"
+
+          git push origin "$BRANCH"
+          echo ""
+          echo "✅ Extension signal sent!"
+          echo ""
+          echo "  The running session will detect this signal"
+          echo "  and automatically extend its lifetime by ${MINUTES} minutes."
+          echo "  Works for: VPS, Code-Server, and Web Host workflows!"
+          echo ""
+          echo "  ⚠️  Make sure your workflow is still running!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+      - name: 🧹 Auto-Cleanup Signal Branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sleep 60
+          git fetch origin
+          for branch in $(git branch -r | grep 'origin/vps-extend-' | sed 's/origin\///'); do
+            git push origin --delete "$branch" 2>/dev/null || true
+            echo "🧹 Cleaned up: $branch"
+          done

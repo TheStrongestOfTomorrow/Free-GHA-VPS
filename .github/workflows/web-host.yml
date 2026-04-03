@@ -1,0 +1,335 @@
+name: 🌐 Free Web Host
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: 'Session duration in minutes (max 30)'
+        required: false
+        default: '30'
+        type: string
+      repo_url:
+        description: '📦 GitHub repo URL to host (clone + serve)'
+        required: false
+        default: ''
+        type: string
+      build_command:
+        description: '🔧 Build command (e.g. "npm run build", "pip install -r requirements.txt")'
+        required: false
+        default: 'auto'
+        type: string
+      server:
+        description: '🌐 Web server type'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - 'auto'
+          - 'nginx'
+          - 'node'
+          - 'python'
+      port:
+        description: '🔌 Port to serve on'
+        required: false
+        default: '8080'
+        type: string
+      tunnel:
+        description: '🌐 Tunnel method'
+        required: false
+        default: 'cloudflare'
+        type: choice
+        options:
+          - 'cloudflare'
+          - 'localhost'
+      storage:
+        description: '💾 Storage mode'
+        required: false
+        default: 'github-only'
+        type: choice
+        options:
+          - 'github-only'
+          - 'auto'
+          - 'drive-only'
+  repository_dispatch:
+    types: [start_webhost]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: web-host
+  cancel-in-progress: false
+
+jobs:
+  web-host:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      # ── NORMALIZE INPUTS ──────────────────────────────────────
+      - name: 🔄 Normalize Inputs
+        id: inputs
+        run: |
+          DURATION="${{ github.event.inputs.duration }}"
+          REPO_URL="${{ github.event.inputs.repo_url }}"
+          BUILD_COMMAND="${{ github.event.inputs.build_command }}"
+          SERVER="${{ github.event.inputs.server }}"
+          PORT="${{ github.event.inputs.port }}"
+          TUNNEL="${{ github.event.inputs.tunnel }}"
+          STORAGE="${{ github.event.inputs.storage }}"
+
+          DURATION="${DURATION:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.duration // "30"' 2>/dev/null)}"
+          REPO_URL="${REPO_URL:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.repo_url // empty' 2>/dev/null)}"
+          BUILD_COMMAND="${BUILD_COMMAND:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.build_command // "auto"' 2>/dev/null)}"
+          SERVER="${SERVER:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.server // "auto"' 2>/dev/null)}"
+          PORT="${PORT:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.port // "8080"' 2>/dev/null)}"
+          TUNNEL="${TUNNEL:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.tunnel // "cloudflare"' 2>/dev/null)}"
+          STORAGE="${STORAGE:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.storage // "github-only"' 2>/dev/null)}"
+
+          DURATION="${DURATION:-30}"
+          BUILD_COMMAND="${BUILD_COMMAND:-auto}"
+          SERVER="${SERVER:-auto}"
+          PORT="${PORT:-8080}"
+          TUNNEL="${TUNNEL:-cloudflare}"
+          STORAGE="${STORAGE:-github-only}"
+
+          echo "duration=$DURATION" >> $GITHUB_ENV
+          echo "repo_url=$REPO_URL" >> $GITHUB_ENV
+          echo "build_command=$BUILD_COMMAND" >> $GITHUB_ENV
+          echo "server=$SERVER" >> $GITHUB_ENV
+          echo "port=$PORT" >> $GITHUB_ENV
+          echo "tunnel=$TUNNEL" >> $GITHUB_ENV
+          echo "storage=$STORAGE" >> $GITHUB_ENV
+
+          echo "✅ Inputs: Duration=${DURATION}min | Server=$SERVER | Tunnel=$TUNNEL"
+
+      # ── NOTIFICATIONS ────────────────────────────────────────
+      - name: 📨 Notify: Web Host Starting
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          chmod +x scripts/notify.sh
+          REPO_MSG="${repo_url:-restored from saved data}"
+          bash scripts/notify.sh "start" \
+            "🌐 Web Host Starting" \
+            "Your website is being set up...\n📦 Repo: ${REPO_MSG}\n🌐 Server: $SERVER\n⏱️ Duration: ${DURATION} min" \
+            "3447003"
+
+      # ── CACHE ────────────────────────────────────────────────
+      - name: ⚡ Cache Web Host Packages
+        id: web-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/web-cache
+          key: web-packages-v1-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            web-packages-v1-${{ runner.os }}-
+
+      # ── RESTORE WEB DATA ─────────────────────────────────────
+      - name: ♻️ Restore Web Data
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
+          RCLONE_REMOTE: ${{ vars.RCLONE_REMOTE }}
+          STORAGE_MODE: ${{ env.storage }}
+          DATA_BRANCH: web-data
+          RELEASE_TAG: web-data
+        run: |
+          chmod +x scripts/restore-data.sh
+          bash scripts/restore-data.sh
+
+      # ── INSTALL WEB SERVER ───────────────────────────────────
+      - name: 🌐 Install Web Server
+        run: |
+          if [ "${{ steps.web-cache.outputs.cache-hit }}" = "true" ]; then
+            echo "⚡ Cache hit! Fast install..."
+          else
+            echo "📦 Cache miss — full install..."
+          fi
+          chmod +x scripts/setup-webhost.sh
+          bash scripts/setup-webhost.sh
+
+      - name: 💾 Save Cache (first run)
+        if: steps.web-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/web-cache
+          key: web-packages-v1-${{ runner.os }}-${{ github.run_id }}
+
+      # ── RESTORE WEB FILES ───────────────────────────────────
+      - name: ♻️ Restore Web Files
+        run: |
+          if [ -d /tmp/restore-data ]; then
+            sudo mkdir -p /var/www/html
+            sudo cp -a /tmp/restore-data/var/www/html/* /var/www/html/ 2>/dev/null || true
+            sudo cp -a /tmp/restore-data/home/web-project /home/runner/ 2>/dev/null || true
+            sudo chown -R runner:runner /var/www/html /home/runner/web-project 2>/dev/null || true
+            echo "✅ Web files restored"
+          else
+            sudo mkdir -p /var/www/html
+          fi
+
+      # ── CLONE USER REPO ─────────────────────────────────────
+      - name: 📦 Clone User Repository
+        if: env.repo_url != ''
+        run: |
+          echo "📦 Cloning $repo_url..."
+          sudo mkdir -p /var/www/html
+          cd /tmp
+          git clone "$repo_url" web-project 2>/dev/null || {
+            echo "⚠️  Clone failed, trying with full URL..."
+          }
+          sudo rm -rf /var/www/html/*
+          if [ -d /tmp/web-project ]; then
+            if [ -f /tmp/web-project/package.json ]; then
+              sudo cp -a /tmp/web-project /home/runner/web-project
+              sudo chown -R runner:runner /home/runner/web-project
+              echo "DETECTED_FRAMEWORK=node" >> $GITHUB_ENV
+            elif [ -f /tmp/web-project/requirements.txt ] || [ -f /tmp/web-project/manage.py ] || [ -f /tmp/web-project/app.py ]; then
+              sudo cp -a /tmp/web-project /home/runner/web-project
+              sudo chown -R runner:runner /home/runner/web-project
+              echo "DETECTED_FRAMEWORK=python" >> $GITHUB_ENV
+            else
+              sudo cp -a /tmp/web-project/. /var/www/html/
+              sudo chown -R www-data:www-data /var/www/html
+              echo "DETECTED_FRAMEWORK=static" >> $GITHUB_ENV
+            fi
+          fi
+          echo "✅ Repository cloned and organized"
+
+      # ── BUILD ────────────────────────────────────────────────
+      - name: 🔧 Build Project
+        run: |
+          BUILD_CMD="$build_command"
+          SERVER_TYPE="$server"
+          DETECTED="${DETECTED_FRAMEWORK:-}"
+
+          if [ "$BUILD_CMD" = "auto" ]; then
+            if [ "$DETECTED" = "node" ] || [ -f /home/runner/web-project/package.json ]; then
+              cd /home/runner/web-project
+              if grep -q '"build"' package.json 2>/dev/null; then
+                echo "🔧 Running npm install + build..."
+                npm install --silent 2>/dev/null || true
+                npm run build 2>/dev/null || true
+                if [ -d dist ]; then
+                  sudo cp -a dist/. /var/www/html/
+                elif [ -d build ]; then
+                  sudo cp -a build/. /var/www/html/
+                elif [ -d out ]; then
+                  sudo cp -a out/. /var/www/html/
+                fi
+                echo "DETECTED_FRAMEWORK=node" >> $GITHUB_ENV
+              else
+                echo "DETECTED_FRAMEWORK=node" >> $GITHUB_ENV
+              fi
+            elif [ "$DETECTED" = "python" ] || [ -f /home/runner/web-project/requirements.txt ]; then
+              cd /home/runner/web-project
+              echo "🔧 Installing Python dependencies..."
+              pip3 install -r requirements.txt --quiet 2>/dev/null || true
+              echo "DETECTED_FRAMEWORK=python" >> $GITHUB_ENV
+            else
+              echo "DETECTED_FRAMEWORK=static" >> $GITHUB_ENV
+            fi
+          else
+            echo "🔧 Running custom build: $BUILD_CMD"
+            cd /home/runner/web-project 2>/dev/null || cd /var/www/html
+            eval "$BUILD_CMD" || echo "⚠️  Build command failed, continuing..."
+          fi
+
+      # ── START WEB SERVER ────────────────────────────────────
+      - name: 🚀 Start Web Server
+        run: |
+          chmod +x scripts/start-webhost.sh
+          bash scripts/start-webhost.sh "$server" "${DETECTED_FRAMEWORK:-}" "$port"
+
+      # ── TUNNEL ───────────────────────────────────────────────
+      - name: ☁️ Cloudflare Tunnel
+        if: env.tunnel == 'cloudflare'
+        run: |
+          chmod +x scripts/tunnel-cloudflare.sh
+          bash scripts/tunnel-cloudflare.sh "$port"
+
+      - name: 🌐 localhost.run Tunnel
+        if: env.tunnel == 'localhost'
+        run: |
+          chmod +x scripts/tunnel-localhost.sh
+          bash scripts/tunnel-localhost.sh "$port"
+
+      # ── READY ────────────────────────────────────────────────
+      - name: ✅ Website is Live!
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          URL="${TUNNEL_URL:-https://pending.trycloudflare.com}"
+          SERVER_INFO=$(cat /tmp/web-server-info.txt 2>/dev/null || echo "Web server running")
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  🌐  YOUR WEBSITE IS NOW LIVE!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  🔗 URL:      ${URL}/"
+          echo "  ⏱️  Session:  ${DURATION} minutes"
+          echo "  🖥️  Server:   ${SERVER_INFO}"
+          echo ""
+          echo "  💡 Extend: Run 'Extend Session' or send a dispatch!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          echo "::notice::🌐 Website LIVE! → ${URL}/"
+
+          chmod +x scripts/notify.sh
+          bash scripts/notify.sh "ready" \
+            "🌐 Website is Live!" \
+            "🔗 [Open Website](${URL}/)\n🖥️ Server: \`${SERVER_INFO}\`\n⏱️ Duration: ${DURATION} min" \
+            "3066993"
+
+      # ── KEEPALIVE ────────────────────────────────────────────
+      - name: 🔄 Keepalive (Session Timer)
+        run: |
+          chmod +x scripts/keepalive-codeserver.sh
+          bash scripts/keepalive-codeserver.sh "$DURATION"
+
+      # ── SAVE DATA ────────────────────────────────────────────
+      - name: 💾 Save Web Data
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
+          RCLONE_REMOTE: ${{ vars.RCLONE_REMOTE }}
+          STORAGE_MODE: ${{ env.storage }}
+          DATA_BRANCH: web-data
+          RELEASE_TAG: web-data
+        run: |
+          chmod +x scripts/save-webhost-data.sh
+          bash scripts/save-webhost-data.sh
+
+      - name: 📨 Notify: Web Host Ended
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          chmod +x scripts/notify.sh
+          bash scripts/notify.sh "end" \
+            "🌐 Web Host Session Ended" \
+            "Your website session is over.\n💾 Data saved to \`web-data\` branch.\n🔄 Run the workflow again to resume." \
+            "15105570"
+
+      # ── CLEANUP ──────────────────────────────────────────────
+      - name: 🧹 Cleanup
+        if: always()
+        run: |
+          sudo pkill -f nginx 2>/dev/null || true
+          sudo pkill -f node 2>/dev/null || true
+          sudo pkill -f "python3 -m http" 2>/dev/null || true
+          sudo pkill -f cloudflared 2>/dev/null || true

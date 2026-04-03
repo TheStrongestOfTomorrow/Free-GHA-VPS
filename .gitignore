@@ -1,0 +1,23 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Archives
+*.tar.gz
+*.zip
+
+# Credentials (never commit these)
+credentials.json
+crd-credentials.json
+PinState
+
+# Logs
+*.log
+
+# Temp
+/tmp/

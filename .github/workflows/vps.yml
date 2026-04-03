@@ -1,0 +1,361 @@
+name: 🖥️ Free GHA VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      pin:
+        description: '6+ digit PIN / password'
+        required: true
+        type: string
+      duration:
+        description: 'Session duration in minutes (max 30)'
+        required: false
+        default: '30'
+        type: string
+      resolution:
+        description: 'Display resolution'
+        required: false
+        default: '1920x1080'
+        type: choice
+        options:
+          - '1920x1080'
+          - '1280x720'
+          - '2560x1440'
+      auth_code:
+        description: '(CRD only, first run) Auth code from remotedesktop.google.com/headless'
+        required: false
+        default: ''
+        type: string
+      storage:
+        description: 'Storage mode'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - 'auto'
+          - 'github-only'
+          - 'drive-only'
+      connection:
+        description: '🖥️ Remote desktop connection method'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - 'auto'
+          - 'novnc-cloudflare'
+          - 'novnc-localhost'
+          - 'chrome-remote-desktop'
+          - 'xrdp-tailscale'
+  repository_dispatch:
+    types: [start_vps]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vps
+  cancel-in-progress: false
+
+env:
+  DISPLAY: :0
+
+jobs:
+  vps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      # ── NORMALIZE INPUTS (manual UI or API dispatch) ──────
+      - name: 🔄 Normalize Inputs
+        id: inputs
+        run: |
+          # From manual workflow_dispatch
+          PIN="${{ github.event.inputs.pin }}"
+          DURATION="${{ github.event.inputs.duration }}"
+          RESOLUTION="${{ github.event.inputs.resolution }}"
+          AUTH_CODE="${{ github.event.inputs.auth_code }}"
+          STORAGE="${{ github.event.inputs.storage }}"
+          CONNECTION="${{ github.event.inputs.connection }}"
+
+          # Fallback to repository_dispatch client_payload
+          PIN="${PIN:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.pin // empty' 2>/dev/null)}"
+          DURATION="${DURATION:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.duration // "30"' 2>/dev/null)}"
+          RESOLUTION="${RESOLUTION:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.resolution // "1920x1080"' 2>/dev/null)}"
+          AUTH_CODE="${AUTH_CODE:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.auth_code // empty' 2>/dev/null)}"
+          STORAGE="${STORAGE:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.storage // "auto"' 2>/dev/null)}"
+          CONNECTION="${CONNECTION:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.connection // "auto"' 2>/dev/null)}"
+
+          # Defaults
+          PIN="${PIN:-123456}"
+          DURATION="${DURATION:-30}"
+          RESOLUTION="${RESOLUTION:-1920x1080}"
+          STORAGE="${STORAGE:-auto}"
+          CONNECTION="${CONNECTION:-auto}"
+
+          # Export for all steps
+          echo "pin=$PIN" >> $GITHUB_ENV
+          echo "duration=$DURATION" >> $GITHUB_ENV
+          echo "resolution=$RESOLUTION" >> $GITHUB_ENV
+          echo "auth_code=$AUTH_CODE" >> $GITHUB_ENV
+          echo "storage=$STORAGE" >> $GITHUB_ENV
+          echo "connection=$CONNECTION" >> $GITHUB_ENV
+
+          echo "✅ Inputs normalized:"
+          echo "  PIN: $PIN | Duration: ${DURATION}min | Resolution: $RESOLUTION"
+          echo "  Connection: $CONNECTION | Storage: $STORAGE"
+
+      # ── NOTIFICATIONS ────────────────────────────────────────
+      - name: 📨 Notify: VPS Starting
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          chmod +x scripts/notify.sh
+          bash scripts/notify.sh "start" \
+            "🖥️ VPS Starting" \
+            "Your remote desktop is being set up...\n🖥️ Connection: $CONNECTION\n📐 Resolution: $RESOLUTION\n⏱️ Duration: ${DURATION} min" \
+            "3447003"
+
+      # ── CACHE ────────────────────────────────────────────────
+      - name: ⚡ Cache VPS Packages
+        id: vps-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/vps-cache
+          key: vps-packages-v3-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            vps-packages-v3-${{ runner.os }}-
+
+      # ── RESTORE DATA ────────────────────────────────────────
+      - name: 💾 Restore Persistent Data
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
+          RCLONE_REMOTE: ${{ vars.RCLONE_REMOTE }}
+          STORAGE_MODE: ${{ env.storage }}
+        run: |
+          chmod +x scripts/restore-data.sh
+          bash scripts/restore-data.sh
+
+      - name: ♻️ Restore CRD Credentials (if returning user)
+        run: |
+          CRD_DIR="$HOME/.config/google-chrome-remote-desktop"
+          mkdir -p "$CRD_DIR"
+          if [ -f /tmp/restore-data/home/.config/google-chrome-remote-desktop/Credentials ]; then
+            cp /tmp/restore-data/home/.config/google-chrome-remote-desktop/Credentials "$CRD_DIR/"
+            chmod 600 "$CRD_DIR/Credentials"
+            echo "✅ CRD credentials restored!"
+          fi
+
+      # ── INSTALL ENVIRONMENT (all methods share this) ───────
+      - name: 🖥️ Install VPS Environment
+        run: |
+          if [ "${{ steps.vps-cache.outputs.cache-hit }}" = "true" ]; then
+            echo "⚡ Cache hit! Fast install..."
+          else
+            echo "📦 Cache miss — full install (~2.5 min)..."
+          fi
+          chmod +x scripts/setup.sh
+          bash scripts/setup.sh
+
+      - name: 💾 Save Cache (first run)
+        if: steps.vps-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/vps-cache
+          key: vps-packages-v3-${{ runner.os }}-${{ github.run_id }}
+
+      # ── START DESKTOP (all methods need this) ──────────────
+      - name: 🖥️ Start Desktop Environment
+        run: |
+          export RESOLUTION="$RESOLUTION"
+          echo "$RESOLUTION" > /tmp/vps-resolution.txt
+          chmod +x scripts/start-desktop.sh
+          bash scripts/start-desktop.sh
+
+      # ═══════════════════════════════════════════════════════
+      #  CONNECTION METHOD ROUTING
+      # ═══════════════════════════════════════════════════════
+
+      # ── noVNC + Cloudflare (default, zero-friction) ────────
+      - name: 🌐 Setup noVNC + Cloudflare Tunnel
+        if: env.connection == 'auto' || env.connection == 'novnc-cloudflare'
+        run: |
+          chmod +x scripts/setup-novnc.sh scripts/start-novnc.sh scripts/tunnel-cloudflare.sh
+          bash scripts/setup-novnc.sh
+          bash scripts/start-novnc.sh
+          bash scripts/tunnel-cloudflare.sh 6080
+
+      # ── noVNC + localhost.run (backup, zero-friction) ──────
+      - name: 🌐 Setup noVNC + localhost.run Tunnel
+        if: env.connection == 'novnc-localhost'
+        run: |
+          chmod +x scripts/setup-novnc.sh scripts/start-novnc.sh scripts/tunnel-localhost.sh
+          bash scripts/setup-novnc.sh
+          bash scripts/start-novnc.sh
+          bash scripts/tunnel-localhost.sh 6080
+
+      # ── Chrome Remote Desktop ─────────────────────────────
+      - name: 🔐 Setup Chrome Remote Desktop
+        if: env.connection == 'chrome-remote-desktop'
+        env:
+          CRD_PIN: ${{ env.pin }}
+          AUTH_CODE: ${{ env.auth_code }}
+        run: |
+          if [ -n "$AUTH_CODE" ] && [ "$AUTH_CODE" != "" ]; then
+            echo "🔑 Authorizing with auth code..."
+            DISPLAY= /opt/google/chrome-remote-desktop/start-host \
+              --code="$AUTH_CODE" \
+              --redirect-url="https://remotedesktop.google.com/" \
+              --name="Free-GHA-VPS" 2>&1 || true
+            echo "✅ Authorization complete!"
+            sleep 3
+          fi
+          chmod +x scripts/configure-crd.sh
+          bash scripts/configure-crd.sh "$CRD_PIN"
+
+      # ── xRDP + Tailscale (real RDP quality) ───────────────
+      - name: 🦎 Setup xRDP + Tailscale
+        if: env.connection == 'xrdp-tailscale'
+        env:
+          TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
+        run: |
+          chmod +x scripts/setup-xrdp.sh scripts/setup-tailscale.sh
+          bash scripts/setup-xrdp.sh
+          bash scripts/setup-tailscale.sh
+
+      # ═══════════════════════════════════════════════════════
+
+      # ── RESTORE USER FILES ─────────────────────────────────
+      - name: ♻️ Restore User Files
+        run: |
+          if [ -d /tmp/restore-data ]; then
+            sudo cp -a /tmp/restore-data/home/Desktop /home/runner/ 2>/dev/null || true
+            sudo cp -a /tmp/restore-data/home/Documents /home/runner/ 2>/dev/null || true
+            sudo cp -a /tmp/restore-data/home/Downloads /home/runner/ 2>/dev/null || true
+            sudo cp -a /tmp/restore-data/home/.bashrc /home/runner/.bashrc 2>/dev/null || true
+            sudo cp -a /tmp/restore-data/home/.bash_history /home/runner/.bash_history 2>/dev/null || true
+            sudo cp -a /tmp/restore-data/home/.ssh /home/runner/.ssh 2>/dev/null || true
+            sudo cp -a /tmp/restore-data/home/.gitconfig /home/runner/.gitconfig 2>/dev/null || true
+            sudo chown -R runner:runner /home/runner/Desktop /home/runner/Documents /home/runner/Downloads 2>/dev/null || true
+            echo "✅ User files restored"
+          fi
+
+      # ── VPS READY ─────────────────────────────────────────
+      - name: ✅ VPS is Ready
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          CONN="$CONNECTION"
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  🖥️  YOUR FREE VPS IS NOW RUNNING!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  📐 Display:  $RESOLUTION"
+          echo "  ⏱️  Session:  $DURATION minutes"
+          echo "  💾 Storage:  $STORAGE"
+          echo "  🖥️  Method:   $CONN"
+          echo ""
+
+          NOTIFY_MSG=""
+
+          if [ "$CONN" = "auto" ] || [ "$CONN" = "novnc-cloudflare" ]; then
+            URL="${TUNNEL_URL:-https://pending.trycloudflare.com}"
+            PASS="$(cat /tmp/vnc-password.txt 2>/dev/null || echo 'see above')"
+            echo "  🔗 URL:      ${URL}/vnc.html"
+            echo "  🔑 Password: $PASS"
+            echo ""
+            echo "::notice::🖥️ VPS READY! → ${URL}/vnc.html | Password: $PASS"
+            NOTIFY_MSG="🔗 [Connect VNC](${URL}/vnc.html) | 🔑 Password: \`${PASS}\`"
+          elif [ "$CONN" = "novnc-localhost" ]; then
+            URL="${TUNNEL_URL:-https://pending.lhr.life}"
+            PASS="$(cat /tmp/vnc-password.txt 2>/dev/null || echo 'see above')"
+            echo "  🔗 URL:      ${URL}/vnc.html"
+            echo "  🔑 Password: $PASS"
+            echo ""
+            echo "::notice::🖥️ VPS READY! → ${URL}/vnc.html | Password: $PASS"
+            NOTIFY_MSG="🔗 [Connect VNC](${URL}/vnc.html) | 🔑 Password: \`${PASS}\`"
+          elif [ "$CONN" = "chrome-remote-desktop" ]; then
+            echo "  🔗 Connect:  https://remotedesktop.google.com/access"
+            echo "  🔑 PIN:      $pin"
+            echo ""
+            echo "::notice::🖥️ VPS READY! → https://remotedesktop.google.com/access | PIN: $pin"
+            NOTIFY_MSG="🔗 [Connect CRD](https://remotedesktop.google.com/access) | 🔑 PIN: \`${pin}\`"
+          elif [ "$CONN" = "xrdp-tailscale" ]; then
+            IP="${TS_IP:-pending}"
+            PASS="$(cat /tmp/rdp-password.txt 2>/dev/null || echo 'runner')"
+            echo "  🦎 Tailscale: $IP"
+            echo "  🖥️  RDP Port:  3389"
+            echo "  👤 Username:  runner"
+            echo "  🔑 Password:  $PASS"
+            echo ""
+            echo "::notice::🖥️ VPS READY! → RDP $IP:3389 | User: runner | Pass: $PASS"
+            NOTIFY_MSG="🦎 RDP: \`${IP}:3389\` | 👤 runner | 🔑 \`${PASS}\`"
+          fi
+
+          echo "  💡 Extend: Run 'Extend Session' workflow or send a dispatch!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          chmod +x scripts/notify.sh
+          bash scripts/notify.sh "ready" \
+            "🖥️ VPS is Ready!" \
+            "🖥️ Connection: \`${CONN}\`\n📐 Resolution: $RESOLUTION\n⏱️ Duration: ${DURATION} min\n\n${NOTIFY_MSG}" \
+            "3066993"
+
+      # ── KEEPALIVE ─────────────────────────────────────────
+      - name: 🔄 Keepalive (Session Timer)
+        run: |
+          chmod +x scripts/keepalive.sh
+          bash scripts/keepalive.sh "$DURATION"
+
+      # ── SAVE DATA ──────────────────────────────────────────
+      - name: 💾 Save Persistent Data
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
+          RCLONE_REMOTE: ${{ vars.RCLONE_REMOTE }}
+          STORAGE_MODE: ${{ env.storage }}
+        run: |
+          chmod +x scripts/save-data.sh
+          bash scripts/save-data.sh
+
+      - name: 📨 Notify: VPS Session Ended
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          chmod +x scripts/notify.sh
+          bash scripts/notify.sh "end" \
+            "🖥️ VPS Session Ended" \
+            "Your remote desktop session is over.\n💾 Data saved to \`vps-data\` branch.\n🔄 Run the workflow again to resume." \
+            "15105570"
+
+      # ── REFRESH CACHE ──────────────────────────────────────
+      - name: 🔄 Refresh Cache Key
+        if: steps.vps-cache.outputs.cache-hit == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/vps-cache
+          key: vps-packages-v3-${{ runner.os }}-${{ github.run_id }}
+
+      # ── CLEANUP ────────────────────────────────────────────
+      - name: 🧹 Cleanup
+        if: always()
+        run: |
+          sudo pkill -f chrome-remote-desktop 2>/dev/null || true
+          sudo pkill -f Xvfb 2>/dev/null || true
+          sudo pkill -f xfce 2>/dev/null || true
+          sudo pkill -f x11vnc 2>/dev/null || true
+          sudo pkill -f websockify 2>/dev/null || true
+          sudo pkill -f cloudflared 2>/dev/null || true
+          sudo pkill -f xrdp 2>/dev/null || true
+          sudo pkill -f tailscaled 2>/dev/null || true
