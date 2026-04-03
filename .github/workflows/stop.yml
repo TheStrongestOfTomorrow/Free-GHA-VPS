@@ -42,7 +42,7 @@ jobs:
           echo "save_data=$SAVE" >> $GITHUB_ENV
           echo "🎯 Stopping: $TARGET | Save data: $SAVE"
 
-      - name: 📨 Notify: Stopping Session
+      - name: "📨 Notify: Stopping Session"
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -122,7 +122,7 @@ jobs:
           fi
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-      - name: 📨 Notify: Session Stopped
+      - name: "📨 Notify: Session Stopped"
         if: always()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
