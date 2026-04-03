@@ -45,8 +45,8 @@ CS_PID=$!
 sleep 3
 
 # ── Verify ────────────────────────────────────────────────────
+READY=false
 if kill -0 $CS_PID 2>/dev/null; then
-  # Wait for it to be ready
   for i in $(seq 1 30); do
     if curl -sf http://localhost:8080 > /dev/null 2>&1; then
       echo "✅ Code-server is running!"
@@ -54,14 +54,16 @@ if kill -0 $CS_PID 2>/dev/null; then
       echo "   Port: 8080"
       echo "   Password: $CS_PASS"
       echo "CS_PID=$CS_PID" >> $GITHUB_ENV
-      return 0
+      READY=true
+      break
     fi
     sleep 1
   done
-  echo "⚠️  Code-server started but not responding yet (check logs)"
-  echo "CS_PID=$CS_PID" >> $GITHUB_ENV
-else
-  echo "❌ Code-server failed to start!"
+fi
+
+if [ "$READY" = false ]; then
+  echo "❌ Code-server failed to start or not responding!"
+  echo "   PID check: $(kill -0 $CS_PID 2>/dev/null && echo 'alive' || echo 'dead')"
   echo "   Logs:"
   cat /tmp/code-server.log
   exit 1
