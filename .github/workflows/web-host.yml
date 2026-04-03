@@ -107,7 +107,7 @@ jobs:
           echo "✅ Inputs: Duration=${DURATION}min | Server=$SERVER | Tunnel=$TUNNEL"
 
       # ── NOTIFICATIONS ────────────────────────────────────────
-      - name: 📨 Notify: Web Host Starting
+      - name: "📨 Notify: Web Host Starting"
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -312,7 +312,7 @@ jobs:
           chmod +x scripts/save-webhost-data.sh
           bash scripts/save-webhost-data.sh
 
-      - name: 📨 Notify: Web Host Ended
+      - name: "📨 Notify: Web Host Ended"
         if: always()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}

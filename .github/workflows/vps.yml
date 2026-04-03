@@ -108,7 +108,7 @@ jobs:
           echo "  Connection: $CONNECTION | Storage: $STORAGE"
 
       # ── NOTIFICATIONS ────────────────────────────────────────
-      - name: 📨 Notify: VPS Starting
+      - name: "📨 Notify: VPS Starting"
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -326,7 +326,7 @@ jobs:
           chmod +x scripts/save-data.sh
           bash scripts/save-data.sh
 
-      - name: 📨 Notify: VPS Session Ended
+      - name: "📨 Notify: VPS Session Ended"
         if: always()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}

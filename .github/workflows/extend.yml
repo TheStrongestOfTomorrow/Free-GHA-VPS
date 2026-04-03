@@ -34,7 +34,7 @@ jobs:
           echo "extra_minutes=$MINUTES" >> $GITHUB_ENV
           echo "✅ Extension: +${MINUTES} minutes"
 
-      - name: 📨 Notify: Extension Triggered
+      - name: "📨 Notify: Extension Triggered"
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

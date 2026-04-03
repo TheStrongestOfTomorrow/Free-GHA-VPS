@@ -86,7 +86,7 @@ jobs:
           echo "✅ Inputs: Duration=${DURATION}min | Tunnel=$TUNNEL | Storage=$STORAGE"
 
       # ── NOTIFICATIONS ────────────────────────────────────────
-      - name: 📨 Notify: Session Starting
+      - name: "📨 Notify: Session Starting"
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -242,7 +242,7 @@ jobs:
           chmod +x scripts/save-codeserver-data.sh
           bash scripts/save-codeserver-data.sh
 
-      - name: 📨 Notify: Session Ended
+      - name: "📨 Notify: Session Ended"
         if: always()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
