@@ -236,10 +236,17 @@ restart_services() {
   fi
 
   # x11vnc
-  if ! pgrep -f "x11vnc" > /dev/null && [ -f /tmp/vnc-password.txt ]; then
+  VNC_PASS_FILE="$HOME/.vnc/passwd"
+  if ! pgrep -f "x11vnc" > /dev/null; then
     echo "⚠️  VNC server crashed! Restarting..."
+    VNC_AUTH_ARGS=""
+    NOPW_ARGS="-nopw"
+    if [ -f "$VNC_PASS_FILE" ]; then
+      VNC_AUTH_ARGS="-rfbauth $VNC_PASS_FILE"
+      NOPW_ARGS=""
+    fi
     nohup x11vnc -display :0 -rfbport 5900 -forever -shared \
-      -rfbauth /tmp/vnc-password.txt > /tmp/x11vnc.log 2>&1 &
+      $VNC_AUTH_ARGS $NOPW_ARGS > /tmp/x11vnc.log 2>&1 &
     sleep 2
   fi
 

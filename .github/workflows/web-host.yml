@@ -166,8 +166,9 @@ jobs:
         run: |
           if [ -d /tmp/restore-data ]; then
             sudo mkdir -p /var/www/html
-            sudo cp -a /tmp/restore-data/var/www/html/* /var/www/html/ 2>/dev/null || true
-            sudo cp -a /tmp/restore-data/home/web-project /home/runner/ 2>/dev/null || true
+            # Fixed: tar was created with -C /var/www and -C /home/runner, so paths are relative
+            sudo cp -a /tmp/restore-data/html/* /var/www/html/ 2>/dev/null || true
+            sudo cp -a /tmp/restore-data/web-project /home/runner/ 2>/dev/null || true
             sudo chown -R runner:runner /var/www/html /home/runner/web-project 2>/dev/null || true
             echo "✅ Web files restored"
           else
@@ -238,7 +239,8 @@ jobs:
           else
             echo "🔧 Running custom build: $BUILD_CMD"
             cd /home/runner/web-project 2>/dev/null || cd /var/www/html
-            eval "$BUILD_CMD" || echo "⚠️  Build command failed, continuing..."
+            # Use bash -c instead of eval for safer execution
+            bash -c "$BUILD_CMD" || echo "⚠️  Build command failed, continuing..."
           fi
 
       # ── START WEB SERVER ────────────────────────────────────

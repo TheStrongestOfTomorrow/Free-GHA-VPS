@@ -19,9 +19,12 @@ else
   CS_PASS=$(openssl rand -base64 12 | tr -d '=/+' | head -c 12)
 fi
 
-# Save password
+# Save password (restrict permissions)
 echo "$CS_PASS" > /tmp/cs-password.txt
-echo "CS_PASSWORD=$CS_PASS" >> $GITHUB_ENV
+chmod 600 /tmp/cs-password.txt
+if [ -n "${GITHUB_ENV:-}" ]; then
+  echo "CS_PASSWORD=$CS_PASS" >> "$GITHUB_ENV"
+fi
 
 # ── Kill any existing code-server ────────────────────────────
 pkill -f code-server 2>/dev/null || true
@@ -53,7 +56,7 @@ if kill -0 $CS_PID 2>/dev/null; then
       echo "   PID: $CS_PID"
       echo "   Port: 8080"
       echo "   Password: $CS_PASS"
-      echo "CS_PID=$CS_PID" >> $GITHUB_ENV
+      echo "CS_PID=$CS_PID" >> "${GITHUB_ENV:-/dev/null}"
       READY=true
       break
     fi

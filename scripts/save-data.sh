@@ -6,8 +6,8 @@
 # ============================================================
 set -euo pipefail
 
-DATA_BRANCH="vps-data"
-RELEASE_TAG="vps-data"
+DATA_BRANCH="${DATA_BRANCH:-vps-data}"
+RELEASE_TAG="${RELEASE_TAG:-vps-data}"
 RELEASE_NAME="VPS Data Archive"
 REPO="${GITHUB_REPOSITORY:?❌ GITHUB_REPOSITORY not set}"
 RUNNER_HOME="/home/runner"
@@ -20,6 +20,54 @@ mkdir -p "$ARCHIVE_DIR"
 echo "💾 Saving persistent data..."
 echo "   Storage mode: $STORAGE"
 echo ""
+
+# ═══════════════════════════════════════════════════════════════
+#  Helper: upload files to data branch (defined BEFORE use)
+# ═══════════════════════════════════════════════════════════════
+upload_to_branch() {
+  local SOURCE="$1"
+  local MODE="$2"
+
+  git config user.name "VPS Bot"
+  git config user.email "vps-bot[bot]@users.noreply.github.com"
+
+  if git ls-remote --heads origin "$DATA_BRANCH" | grep -q "$DATA_BRANCH"; then
+    git fetch origin "$DATA_BRANCH"
+    git checkout "$DATA_BRANCH"
+    # Remove old data files
+    git rm -f user-data.* split-info.json user-data.part-* 2>/dev/null || true
+  else
+    git checkout --orphan "$DATA_BRANCH"
+    git rm -rf . 2>/dev/null || true
+  fi
+
+  if [ "$MODE" = "split-upload" ]; then
+    cp "$SOURCE"/* ./ 2>/dev/null || true
+    git add user-data.part-* split-info.json 2>/dev/null || true
+  else
+    local FILENAME=$(basename "$SOURCE")
+    cp "$SOURCE" "./$FILENAME"
+    git add "$FILENAME"
+  fi
+
+  # Metadata
+  local COMP_TYPE="zstd"
+  [ "${USE_GZIP:-false}" = "true" ] && COMP_TYPE="gzip"
+  echo "{\"last_session\": \"$TIMESTAMP\", \"archive_size\": $ARCHIVE_SIZE, \"storage\": \"branch\", \"compression\": \"$COMP_TYPE\"}" > session-info.json
+  git add session-info.json
+
+  git commit -m "💾 VPS data — $TIMESTAMP ($(numfmt --to=iec $ARCHIVE_SIZE))" 2>/dev/null || {
+    echo "   ℹ️  No changes to save"
+    git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
+    return 0
+  }
+
+  git push origin "$DATA_BRANCH" 2>/dev/null || \
+    git push --force origin "$DATA_BRANCH" 2>/dev/null || true
+
+  git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
+  echo "   ✅ Uploaded to $DATA_BRANCH branch"
+}
 
 # ═══════════════════════════════════════════════════════════════
 #  STEP 1: Collect user data with smart exclusions
@@ -178,12 +226,14 @@ if [ "$STORAGE" != "drive-only" ]; then
 fi
 
 # ═══════════════════════════════════════════════════════════════
-#  STEP 3B: Fallback — Push to vps-data branch (split if needed)
+#  STEP 3B: Fallback — Push to data branch (split if needed)
 # ═══════════════════════════════════════════════════════════════
+
+BRANCH_OK=false
 
 if [ "$GITHUB_RELEASE_OK" = "false" ] && [ "$STORAGE" != "drive-only" ]; then
   echo ""
-  echo "📤 Uploading to vps-data branch..."
+  echo "📤 Uploading to $DATA_BRANCH branch..."
 
   BRANCH_LIMIT=$((95 * 1024 * 1024))  # 95MB per file (safety margin)
 
@@ -197,11 +247,7 @@ if [ "$GITHUB_RELEASE_OK" = "false" ] && [ "$STORAGE" != "drive-only" ]; then
     SPLIT_DIR="$ARCHIVE_DIR/splits"
     mkdir -p "$SPLIT_DIR"
 
-    if [ "${USE_GZIP:-false}" = "true" ]; then
-      split -b $BRANCH_LIMIT -d "$ARCHIVE_FILE" "$SPLIT_DIR/user-data.part-"
-    else
-      split -b $BRANCH_LIMIT -d "$ARCHIVE_FILE" "$SPLIT_DIR/user-data.part-"
-    fi
+    split -b $BRANCH_LIMIT -d "$ARCHIVE_FILE" "$SPLIT_DIR/user-data.part-"
 
     PART_COUNT=$(ls "$SPLIT_DIR"/user-data.part-* | wc -l)
     echo "   Split into $PART_COUNT parts"
@@ -214,50 +260,6 @@ if [ "$GITHUB_RELEASE_OK" = "false" ] && [ "$STORAGE" != "drive-only" ]; then
 
   BRANCH_OK=true
 fi
-
-# Helper: upload files to vps-data branch
-upload_to_branch() {
-  local SOURCE="$1"
-  local MODE="$2"
-
-  git config user.name "VPS Bot"
-  git config user.email "vps-bot[bot]@users.noreply.github.com"
-
-  if git ls-remote --heads origin "$DATA_BRANCH" | grep -q "$DATA_BRANCH"; then
-    git fetch origin "$DATA_BRANCH"
-    git checkout "$DATA_BRANCH"
-    # Remove old data files
-    git rm -f user-data.* split-info.json user-data.part-* 2>/dev/null || true
-  else
-    git checkout --orphan "$DATA_BRANCH"
-    git rm -rf . 2>/dev/null || true
-  fi
-
-  if [ "$MODE" = "split-upload" ]; then
-    cp "$SOURCE"/* ./ 2>/dev/null || true
-    git add user-data.part-* split-info.json 2>/dev/null || true
-  else
-    local FILENAME=$(basename "$SOURCE")
-    cp "$SOURCE" "./$FILENAME"
-    git add "$FILENAME"
-  fi
-
-  # Metadata
-  echo "{\"last_session\": \"$TIMESTAMP\", \"archive_size\": $ARCHIVE_SIZE, \"storage\": \"branch\", \"compression\": \"${USE_GZIP:-zstd}\"}" > session-info.json
-  git add session-info.json
-
-  git commit -m "💾 VPS data — $TIMESTAMP ($(numfmt --to=iec $ARCHIVE_SIZE))" 2>/dev/null || {
-    echo "   ℹ️  No changes to save"
-    git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
-    return 0
-  }
-
-  git push origin "$DATA_BRANCH" 2>/dev/null || \
-    git push --force origin "$DATA_BRANCH" 2>/dev/null || true
-
-  git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
-  echo "   ✅ Uploaded to vps-data branch"
-}
 
 # ═══════════════════════════════════════════════════════════════
 #  STEP 4: Backup to Google Drive via rclone (if configured)
@@ -318,7 +320,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "  📦 Original:   $(numfmt --to=iec $TAR_SIZE)"
 echo "  🗜️  Compressed: $(numfmt --to=iec $ARCHIVE_SIZE) ($COMPRESSION_RATIO% smaller)"
 echo "  📤 GitHub Release: $([ "$GITHUB_RELEASE_OK" = "true" ] && echo "✅" || echo "⚠️  skipped")"
-echo "  🌿 Branch backup: $([ "${BRANCH_OK:-false}" = "true" ] && echo "✅" || echo "n/a")"
+echo "  🌿 Branch backup: $([ "$BRANCH_OK" = "true" ] && echo "✅" || echo "n/a")"
 echo "  ☁️  Google Drive:  $([ "$RCLONE_OK" = "true" ] && echo "✅" || echo "not configured")"
 echo "  📅 Time: $TIMESTAMP"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

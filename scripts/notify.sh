@@ -36,6 +36,7 @@ if [ -n "$DISCORD_URL" ]; then
     end)    EMOJI="👋" ;;
     save)   EMOJI="💾" ;;
     extend) EMOJI="⏰" ;;
+    stop)   EMOJI="🛑" ;;
     info)   EMOJI="📢" ;;
   esac
 
@@ -101,12 +102,13 @@ if [ -n "$TELEGRAM_TOKEN" ] && [ -n "$TELEGRAM_CHAT" ]; then
     end)    EMOJI="👋" ;;
     save)   EMOJI="💾" ;;
     extend) EMOJI="⏰" ;;
+    stop)   EMOJI="🛑" ;;
     info)   EMOJI="📢" ;;
   esac
 
-  # Escape markdown special chars in message
-  SAFE_MSG=$(echo "$MESSAGE" | sed 's/[_*`\[\]()~>]/\\&/g')
-  SAFE_TITLE_TG=$(echo "$TITLE" | sed 's/[_*`\[\]()~>]/\\&/g')
+  # Escape markdown special chars in message (Telegram MarkdownV2 requires escaping 18 chars)
+  SAFE_MSG=$(echo "$MESSAGE" | sed 's/[_*`\[\]()~>#+\-=|{}.!]/\\&/g')
+  SAFE_TITLE_TG=$(echo "$TITLE" | sed 's/[_*`\[\]()~>#+\-=|{}.!]/\\&/g')
 
   TELEGRAM_PAYLOAD=$(cat <<TELEGRAM_EOF
 {

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # ============================================================
 #  Free GHA VPS - Configure Chrome Remote Desktop
-#  First run: auto-displays auth link → user clicks → done
+#  First run: uses auth code from start-host → instant connect
 #  Returning: uses saved credentials → instant connect
 # ============================================================
-set -euo pipefail
+set -uo pipefail
 
 PIN="${1:?❌ PIN is required. Pass it as the first argument.}"
 MIN_PIN_LEN=6
@@ -15,30 +15,19 @@ if [ ${#PIN} -lt $MIN_PIN_LEN ]; then
   exit 1
 fi
 
+# Validate PIN is numeric
+if ! [[ "$PIN" =~ ^[0-9]+$ ]]; then
+  echo "❌ PIN must be numeric (digits only)"
+  exit 1
+fi
+
 CRD_DIR="$HOME/.config/google-chrome-remote-desktop"
 mkdir -p "$CRD_DIR"
 
-# ── Save PIN for CRD daemon ──────────────────────────────────
+# ── Save PIN for reference ───────────────────────────────────
 echo "🔑 Setting CRD PIN..."
-# Use CRD's built-in --pin command (it asks for PIN twice — pipe it in)
-printf "%s\n%s\n" "$PIN" "$PIN" | chrome-remote-desktop --pin
-if [ $? -eq 0 ]; then
-  echo "✅ PIN saved via chrome-remote-desktop --pin"
-else
-  echo "⚠️  --pin flag failed, trying alternative..."
-  # Fallback: use expect or direct file write
-  export DISPLAY=:0
-  expect -c "spawn chrome-remote-desktop --pin
-      expect \"Enter PIN:\"
-      send \"$PIN\r\"
-      expect \"Re-enter PIN:\"
-      send \"$PIN\r\"
-      expect eof" 2>/dev/null || {
-    # Last resort: write pin file directly
-    echo "$PIN" > "$CRD_DIR/pin"
-    echo "✅ PIN saved (alternative method)"
-  }
-fi
+echo "$PIN" > "$CRD_DIR/pin"
+chmod 600 "$CRD_DIR/pin"
 
 # ── Kill any existing CRD processes ──────────────────────────
 sudo pkill -f chrome-remote-desktop 2>/dev/null || true
@@ -53,16 +42,19 @@ if [ -f "$CRD_DIR/Credentials" ] && [ -s "$CRD_DIR/Credentials" ]; then
   sudo pkill -9 -f chrome-remote-desktop 2>/dev/null || true
   sleep 2
 
-  # Start CRD daemon in background (no interactive prompts)
-  nohup chrome-remote-desktop --start < /dev/null > /tmp/crd.log 2>&1 &
+  # Start CRD daemon in background using the correct start-host method
+  DISPLAY=:0 nohup /opt/google/chrome-remote-desktop/start-host \
+    --pin="$PIN" \
+    --name="Free-GHA-VPS" < /dev/null > /tmp/crd.log 2>&1 &
   sleep 5
 
   # Verify it's online
   for i in $(seq 1 30); do
-    if chrome-remote-desktop --host-status 2>/dev/null | grep -q "ONLINE"; then
+    if pgrep -f "chrome-remote-desktop" > /dev/null; then
       echo ""
       echo "✅ Chrome Remote Desktop is ONLINE!"
       echo "   🔗 Connect: https://remotedesktop.google.com/access"
+      echo "   🔑 PIN: ${PIN}"
       exit 0
     fi
     sleep 2
@@ -72,14 +64,24 @@ if [ -f "$CRD_DIR/Credentials" ] && [ -s "$CRD_DIR/Credentials" ]; then
   exit 0
 fi
 
-# ── First-time setup: Start CRD and capture auth URL ─────────
+# ── First-time setup: No credentials yet ─────────────────────
 echo "🆕 First-time setup — Chrome Remote Desktop needs authorization"
 echo ""
 
-# Start CRD — it will generate an auth URL in its output
-nohup chrome-remote-desktop --start > /tmp/crd.log 2>&1 &
-CRD_PID=$!
-sleep 5
+# If start-host is available, try using it with the PIN
+if [ -x /opt/google/chrome-remote-desktop/start-host ]; then
+  echo "   Starting CRD host with PIN..."
+  DISPLAY=:0 nohup /opt/google/chrome-remote-desktop/start-host \
+    --pin="$PIN" \
+    --name="Free-GHA-VPS" > /tmp/crd.log 2>&1 &
+  CRD_PID=$!
+  sleep 5
+else
+  # Fallback: start the CRD daemon directly
+  nohup /opt/google/chrome-remote-desktop/chrome-remote-desktop --start > /tmp/crd.log 2>&1 &
+  CRD_PID=$!
+  sleep 5
+fi
 
 # Try to extract the auth URL from CRD logs
 AUTH_URL=""

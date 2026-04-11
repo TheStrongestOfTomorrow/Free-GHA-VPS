@@ -101,7 +101,7 @@ if [ "$FRAMEWORK" = "node" ]; then
   # Start the server
   if grep -q '"start"' package.json 2>/dev/null; then
     echo "🚀 Running npm start..."
-    nohup npx --yes serve -s . -l $PORT > /tmp/node-server.log 2>&1 &
+    nohup npm start -- -p $PORT > /tmp/node-server.log 2>&1 &
   elif [ -f server.js ]; then
     echo "🚀 Running server.js..."
     nohup node server.js > /tmp/node-server.log 2>&1 &
@@ -135,7 +135,13 @@ if [ "$FRAMEWORK" = "python" ]; then
   elif [ -f app.py ]; then
     echo "🚀 Starting Flask server..."
     pip3 install flask --quiet 2>/dev/null || true
-    nohup python3 app.py > /tmp/python-server.log 2>&1 &
+    nohup flask run --host=0.0.0.0 --port=$PORT > /tmp/python-server.log 2>&1 &
+    # Fallback if flask run doesn't work: run app.py directly
+    sleep 2
+    if ! curl -sf http://localhost:$PORT > /dev/null 2>&1; then
+      pkill -f "flask run" 2>/dev/null || true
+      nohup python3 app.py > /tmp/python-server.log 2>&1 &
+    fi
   # FastAPI
   elif [ -f main.py ] && grep -q "fastapi" requirements.txt 2>/dev/null; then
     echo "🚀 Starting FastAPI server..."

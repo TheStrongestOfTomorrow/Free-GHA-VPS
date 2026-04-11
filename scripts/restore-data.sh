@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # ============================================================
 #  Free GHA VPS - Restore Persistent Data
-#  Tries: GitHub Release → vps-data branch → rclone Google Drive
+#  Tries: GitHub Release → data branch → rclone Google Drive
 #  First available source wins
 # ============================================================
 set -euo pipefail
 
 REPO="${GITHUB_REPOSITORY:?❌ GITHUB_REPOSITORY not set}"
 RESTORE_DIR="/tmp/restore-data"
-RELEASE_TAG="vps-data"
-DATA_BRANCH="vps-data"
+# Use env vars with fallbacks so code-server/web-host can override
+RELEASE_TAG="${RELEASE_TAG:-vps-data}"
+DATA_BRANCH="${DATA_BRANCH:-vps-data}"
 
 mkdir -p "$RESTORE_DIR"
 RESTORED=false
@@ -18,7 +19,7 @@ RESTORE_SOURCE=""
 # ═══════════════════════════════════════════════════════════════
 #  METHOD 1: GitHub Release (fastest, up to 2GB)
 # ═══════════════════════════════════════════════════════════════
-echo "🔍 Checking GitHub Release for saved data..."
+echo "🔍 Checking GitHub Release for saved data (tag: $RELEASE_TAG)..."
 
 RELEASE_DATA=$(curl -s \
   -H "Authorization: token ${GH_TOKEN:-$GITHUB_TOKEN}" \
@@ -37,13 +38,34 @@ if [ -n "$RELEASE_DATA" ] && echo "$RELEASE_DATA" | jq -e '.assets' > /dev/null 
       | .browser_download_url' 2>/dev/null || echo "")
   fi
 
+  if [ -z "$ASSET_URL" ]; then
+    # Try code-server asset name
+    ASSET_URL=$(echo "$RELEASE_DATA" | jq -r '
+      [.assets[] | select(.name == "cs-data.tar.zst")] | first // empty
+      | .browser_download_url' 2>/dev/null || echo "")
+  fi
+
+  if [ -z "$ASSET_URL" ]; then
+    # Try web-host asset name
+    ASSET_URL=$(echo "$RELEASE_DATA" | jq -r '
+      [.assets[] | select(.name == "web-data.tar.zst")] | first // empty
+      | .browser_download_url' 2>/dev/null || echo "")
+  fi
+
+  if [ -z "$ASSET_URL" ]; then
+    # Generic: pick the first asset that looks like a data archive
+    ASSET_URL=$(echo "$RELEASE_DATA" | jq -r '
+      [.assets[] | select(.name | test("\\.tar\\.(zst|gz)$"))] | first // empty
+      | .browser_download_url' 2>/dev/null || echo "")
+  fi
+
   if [ -n "$ASSET_URL" ]; then
     ASSET_NAME=$(echo "$RELEASE_DATA" | jq -r '
-      [.assets[] | select(.name | startswith("user-data."))] | first // empty
+      [.assets[] | select(.name | test("\\.tar\\.(zst|gz)$"))] | first // empty
       | .name' 2>/dev/null || echo "user-data.tar.zst")
 
     ASSET_SIZE=$(echo "$RELEASE_DATA" | jq -r '
-      [.assets[] | select(.name | startswith("user-data."))] | first // empty
+      [.assets[] | select(.name | test("\\.tar\\.(zst|gz)$"))] | first // empty
       | .size' 2>/dev/null || echo "0")
 
     echo "   📦 Found release asset: $ASSET_NAME ($(numfmt --to=iec $ASSET_SIZE 2>/dev/null || echo "$ASSET_SIZE bytes"))"
@@ -78,13 +100,13 @@ if [ "$RESTORED" = "false" ]; then
 fi
 
 # ═══════════════════════════════════════════════════════════════
-#  METHOD 2: vps-data branch (fallback, auto-splits)
+#  METHOD 2: data branch (fallback, auto-splits)
 # ═══════════════════════════════════════════════════════════════
 if [ "$RESTORED" = "false" ]; then
-  echo "🔍 Checking vps-data branch..."
+  echo "🔍 Checking $DATA_BRANCH branch..."
 
   git fetch origin "$DATA_BRANCH" 2>/dev/null || {
-    echo "   ℹ️  No vps-data branch found"
+    echo "   ℹ️  No $DATA_BRANCH branch found"
   }
 
   if git show "origin/$DATA_BRANCH:split-info.json" 2>/dev/null; then
@@ -97,13 +119,19 @@ if [ "$RESTORED" = "false" ]; then
 
     # Download all parts
     COMBINED="/tmp/restore-archive.$EXT"
+    rm -f "$COMBINED"
     for i in $(seq 0 $((PART_COUNT - 1))); do
       PART_NUM=$(printf "%02d" $i)
-      PART_FILE="user-data.part-$PART_NUM"
-      git show "origin/$DATA_BRANCH:$PART_FILE" 2>/dev/null >> "$COMBINED" || {
-        echo "   ⚠️  Missing part $PART_NUM, restore incomplete"
-        break
-      }
+      # Try both naming patterns (user-data, cs-data, web-data)
+      PART_FILE=$(git show "origin/$DATA_BRANCH:user-data.part-$PART_NUM" 2>/dev/null && echo "user-data" || \
+        git show "origin/$DATA_BRANCH:cs-data.part-$PART_NUM" 2>/dev/null && echo "cs-data" || \
+        git show "origin/$DATA_BRANCH:web-data.part-$PART_NUM" 2>/dev/null && echo "web-data" || echo "")
+      if [ -n "$PART_FILE" ]; then
+        git show "origin/$DATA_BRANCH:${PART_FILE}.part-$PART_NUM" 2>/dev/null >> "$COMBINED" || {
+          echo "   ⚠️  Missing part $PART_NUM, restore incomplete"
+          break
+        }
+      fi
     done
 
     # Extract
@@ -119,7 +147,7 @@ if [ "$RESTORED" = "false" ]; then
         tar -xzf "$COMBINED" -C "$RESTORE_DIR" 2>/dev/null
       fi
       RESTORED=true
-      RESTORE_SOURCE="vps-data branch (split)"
+      RESTORE_SOURCE="$DATA_BRANCH branch (split)"
       echo "   ✅ Data restored from split archive!"
     fi
 
@@ -132,14 +160,36 @@ if [ "$RESTORED" = "false" ]; then
     zstd -d -f /tmp/restore-archive -o /tmp/restore-archive.tar 2>/dev/null && \
       tar -xf /tmp/restore-archive.tar -C "$RESTORE_DIR" 2>/dev/null
     RESTORED=true
-    RESTORE_SOURCE="vps-data branch"
+    RESTORE_SOURCE="$DATA_BRANCH branch"
 
   elif git show "origin/$DATA_BRANCH:user-data.tar.gz" 2>/dev/null > /tmp/restore-archive; then
     # ── Single gz file ────────────────────────────────────────
     echo "   📦 Found single archive (gz)"
     tar -xzf /tmp/restore-archive -C "$RESTORE_DIR" 2>/dev/null
     RESTORED=true
-    RESTORE_SOURCE="vps-data branch"
+    RESTORE_SOURCE="$DATA_BRANCH branch"
+
+  elif git show "origin/$DATA_BRANCH:cs-data.tar.zst" 2>/dev/null > /tmp/restore-archive; then
+    # ── Code-server zst ────────────────────────────────────────
+    echo "   📦 Found code-server archive (zst)"
+    if ! command -v zstd &>/dev/null; then
+      sudo apt-get install -y -qq zstd > /dev/null 2>&1
+    fi
+    zstd -d -f /tmp/restore-archive -o /tmp/restore-archive.tar 2>/dev/null && \
+      tar -xf /tmp/restore-archive.tar -C "$RESTORE_DIR" 2>/dev/null
+    RESTORED=true
+    RESTORE_SOURCE="$DATA_BRANCH branch"
+
+  elif git show "origin/$DATA_BRANCH:web-data.tar.zst" 2>/dev/null > /tmp/restore-archive; then
+    # ── Web host zst ───────────────────────────────────────────
+    echo "   📦 Found web-host archive (zst)"
+    if ! command -v zstd &>/dev/null; then
+      sudo apt-get install -y -qq zstd > /dev/null 2>&1
+    fi
+    zstd -d -f /tmp/restore-archive -o /tmp/restore-archive.tar 2>/dev/null && \
+      tar -xf /tmp/restore-archive.tar -C "$RESTORE_DIR" 2>/dev/null
+    RESTORED=true
+    RESTORE_SOURCE="$DATA_BRANCH branch"
   fi
 
   if [ "$RESTORED" = "true" ]; then
@@ -207,14 +257,19 @@ if [ "$RESTORED" = "true" ]; then
   echo "  ✅ DATA RESTORED FROM: $RESTORE_SOURCE"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-  # List what was restored
+  # List what was restored - use CORRECT paths (tar was created with -C, so paths are relative)
   echo "  📁 Restored items:"
-  if [ -d "$RESTORE_DIR/home/Desktop" ]; then echo "     ✅ Desktop"; fi
-  if [ -d "$RESTORE_DIR/home/Documents" ]; then echo "     ✅ Documents"; fi
-  if [ -d "$RESTORE_DIR/home/Downloads" ]; then echo "     ✅ Downloads"; fi
-  if [ -d "$RESTORE_DIR/home/.config/google-chrome-remote-desktop" ]; then echo "     ✅ CRD Credentials"; fi
-  if [ -f "$RESTORE_DIR/home/.bashrc" ]; then echo "     ✅ Bash config"; fi
-  if [ -d "$RESTORE_DIR/home/.ssh" ]; then echo "     ✅ SSH keys"; fi
+  if [ -d "$RESTORE_DIR/Desktop" ]; then echo "     ✅ Desktop"; fi
+  if [ -d "$RESTORE_DIR/Documents" ]; then echo "     ✅ Documents"; fi
+  if [ -d "$RESTORE_DIR/Downloads" ]; then echo "     ✅ Downloads"; fi
+  if [ -d "$RESTORE_DIR/google-chrome-remote-desktop" ]; then echo "     ✅ CRD Credentials"; fi
+  if [ -f "$RESTORE_DIR/.bashrc" ]; then echo "     ✅ Bash config"; fi
+  if [ -d "$RESTORE_DIR/.ssh" ]; then echo "     ✅ SSH keys"; fi
+  if [ -d "$RESTORE_DIR/workspace" ]; then echo "     ✅ Code-Server workspace"; fi
+  if [ -d "$RESTORE_DIR/.local/share/code-server" ]; then echo "     ✅ Code-Server data"; fi
+  if [ -d "$RESTORE_DIR/web-project" ]; then echo "     ✅ Web project"; fi
+  if [ -d "$RESTORE_DIR/html" ]; then echo "     ✅ Web HTML files"; fi
+  if [ -f "$RESTORE_DIR/ts-state-tmp.tgz" ]; then echo "     ✅ Tailscale state"; fi
 else
   echo ""
   echo "ℹ️  No previous data found — this is a fresh session."

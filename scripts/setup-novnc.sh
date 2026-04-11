@@ -76,17 +76,18 @@ mkdir -p "$HOME/.vnc"
 
 if [ ! -f "$VNC_PASS_FILE" ]; then
   VNC_PASS="${VNC_PASSWORD:-$(openssl rand -hex 6)}"
-  # x11vnc uses openssl-style password file
-  openssl rand -base64 8 > /tmp/vnc-clear-pass 2>/dev/null
+  # Use x11vnc's built-in password storage (creates proper binary format)
   x11vnc -storepasswd "$VNC_PASS" "$VNC_PASS_FILE" 2>/dev/null || {
     # Manual creation if x11vnc's -storepasswd fails
     echo "$VNC_PASS" | vncpasswd -f > "$VNC_PASS_FILE" 2>/dev/null || {
-      echo "$VNC_PASS" > "$VNC_PASS_FILE"
+      # Last resort: use x11vnc again with explicit display
+      mkdir -p "$HOME/.vnc"
+      x11vnc -storepasswd "$VNC_PASS" "$VNC_PASS_FILE"
     }
   }
-  # Save password for display
+  # Save password for display (restrict permissions)
   echo "$VNC_PASS" > /tmp/vnc-password.txt
-  chmod 600 "$VNC_PASS_FILE"
+  chmod 600 "$VNC_PASS_FILE" /tmp/vnc-password.txt
   echo "   🔑 VNC password generated"
 else
   echo "   🔑 VNC password file exists"

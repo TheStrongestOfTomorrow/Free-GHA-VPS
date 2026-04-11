@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       pin:
-        description: '6+ digit PIN / password'
+        description: '6+ digit PIN / password (digits only)'
         required: true
         type: string
       duration:
@@ -89,7 +89,19 @@ jobs:
           CONNECTION="${CONNECTION:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.connection // "auto"' 2>/dev/null)}"
 
           # Defaults
-          PIN="${PIN:-123456}"
+          if [ -z "$PIN" ]; then
+            PIN=$(openssl rand -hex 3)
+            echo "⚠️  No PIN provided — generated random PIN: $PIN"
+          fi
+          # Validate PIN is numeric and at least 6 digits
+          if ! [[ "$PIN" =~ ^[0-9]+$ ]]; then
+            echo "❌ PIN must be numeric (digits only). Got: $PIN"
+            exit 1
+          fi
+          if [ ${#PIN} -lt 6 ]; then
+            echo "❌ PIN must be at least 6 digits. Got ${#PIN} digits."
+            exit 1
+          fi
           DURATION="${DURATION:-30}"
           RESOLUTION="${RESOLUTION:-1920x1080}"
           STORAGE="${STORAGE:-auto}"
@@ -104,7 +116,7 @@ jobs:
           echo "connection=$CONNECTION" >> $GITHUB_ENV
 
           echo "✅ Inputs normalized:"
-          echo "  PIN: $PIN | Duration: ${DURATION}min | Resolution: $RESOLUTION"
+          echo "  PIN: **** | Duration: ${DURATION}min | Resolution: $RESOLUTION"
           echo "  Connection: $CONNECTION | Storage: $STORAGE"
 
       # ── NOTIFICATIONS ────────────────────────────────────────
@@ -145,8 +157,9 @@ jobs:
         run: |
           CRD_DIR="$HOME/.config/google-chrome-remote-desktop"
           mkdir -p "$CRD_DIR"
-          if [ -f /tmp/restore-data/home/.config/google-chrome-remote-desktop/Credentials ]; then
-            cp /tmp/restore-data/home/.config/google-chrome-remote-desktop/Credentials "$CRD_DIR/"
+          # Fixed: tar was created with -C $RUNNER_HOME/.config, so path is relative
+          if [ -f /tmp/restore-data/google-chrome-remote-desktop/Credentials ]; then
+            cp -a /tmp/restore-data/google-chrome-remote-desktop/Credentials "$CRD_DIR/"
             chmod 600 "$CRD_DIR/Credentials"
             echo "✅ CRD credentials restored!"
           fi
@@ -206,16 +219,8 @@ jobs:
           CRD_PIN: ${{ env.pin }}
           AUTH_CODE: ${{ env.auth_code }}
         run: |
-          if [ -n "$AUTH_CODE" ] && [ "$AUTH_CODE" != "" ]; then
-            echo "🔑 Authorizing with auth code..."
-            DISPLAY= /opt/google/chrome-remote-desktop/start-host \
-              --code="$AUTH_CODE" \
-              --redirect-url="https://remotedesktop.google.com/" \
-              --name="Free-GHA-VPS" 2>&1 || true
-            echo "✅ Authorization complete!"
-            sleep 3
-          fi
           chmod +x scripts/configure-crd.sh
+          # configure-crd.sh handles both auth code and PIN setup
           bash scripts/configure-crd.sh "$CRD_PIN"
 
       # ── xRDP + Tailscale (real RDP quality) ───────────────
@@ -234,13 +239,21 @@ jobs:
       - name: ♻️ Restore User Files
         run: |
           if [ -d /tmp/restore-data ]; then
-            sudo cp -a /tmp/restore-data/home/Desktop /home/runner/ 2>/dev/null || true
-            sudo cp -a /tmp/restore-data/home/Documents /home/runner/ 2>/dev/null || true
-            sudo cp -a /tmp/restore-data/home/Downloads /home/runner/ 2>/dev/null || true
-            sudo cp -a /tmp/restore-data/home/.bashrc /home/runner/.bashrc 2>/dev/null || true
-            sudo cp -a /tmp/restore-data/home/.bash_history /home/runner/.bash_history 2>/dev/null || true
-            sudo cp -a /tmp/restore-data/home/.ssh /home/runner/.ssh 2>/dev/null || true
-            sudo cp -a /tmp/restore-data/home/.gitconfig /home/runner/.gitconfig 2>/dev/null || true
+            # Fixed: tar was created with -C /home/runner, so paths are relative (no /home/ prefix)
+            sudo cp -a /tmp/restore-data/Desktop /home/runner/ 2>/dev/null || true
+            sudo cp -a /tmp/restore-data/Documents /home/runner/ 2>/dev/null || true
+            sudo cp -a /tmp/restore-data/Downloads /home/runner/ 2>/dev/null || true
+            sudo cp -a /tmp/restore-data/.bashrc /home/runner/.bashrc 2>/dev/null || true
+            sudo cp -a /tmp/restore-data/.bash_history /home/runner/.bash_history 2>/dev/null || true
+            sudo cp -a /tmp/restore-data/.ssh /home/runner/.ssh 2>/dev/null || true
+            sudo cp -a /tmp/restore-data/.gitconfig /home/runner/.gitconfig 2>/dev/null || true
+            sudo cp -a /tmp/restore-data/.profile /home/runner/.profile 2>/dev/null || true
+            # Restore Tailscale state if present
+            if [ -f /tmp/restore-data/ts-state-tmp.tgz ]; then
+              sudo mkdir -p /var/lib/tailscale
+              sudo tar -xzf /tmp/restore-data/ts-state-tmp.tgz -C /var/lib/tailscale 2>/dev/null || true
+              echo "✅ Tailscale state restored"
+            fi
             sudo chown -R runner:runner /home/runner/Desktop /home/runner/Documents /home/runner/Downloads 2>/dev/null || true
             echo "✅ User files restored"
           fi

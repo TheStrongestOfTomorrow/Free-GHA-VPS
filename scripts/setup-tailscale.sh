@@ -65,10 +65,11 @@ if [ -z "$TS_KEY" ]; then
 fi
 
 # Restore Tailscale state if we have it (same device, no re-auth)
-if [ -f /tmp/restore-data/home/.tailscale-state.tgz ]; then
+# Fixed: tar was created with -C /tmp, so the file is ts-state-tmp.tgz (not home/.tailscale-state.tgz)
+if [ -f /tmp/restore-data/ts-state-tmp.tgz ]; then
   echo "   ♻️  Restoring Tailscale state..."
   sudo mkdir -p /var/lib/tailscale
-  sudo tar -xzf /tmp/restore-data/home/.tailscale-state.tgz -C /var/lib/tailscale 2>/dev/null || true
+  sudo tar -xzf /tmp/restore-data/ts-state-tmp.tgz -C /var/lib/tailscale 2>/dev/null || true
 fi
 
 # Start and authenticate Tailscale
@@ -100,7 +101,8 @@ echo "   ✅ Connected to Tailscale!"
 
 # ── Save state for next run ────────────────────────────────
 sudo tar -czf /tmp/tailscale-state-save.tgz -C /var/lib tailscale/ 2>/dev/null || true
-cp /tmp/tailscale-state-save.tgz /tmp/restore-data/home/.tailscale-state.tgz 2>/dev/null || true
+sudo mkdir -p /tmp/restore-data
+cp /tmp/tailscale-state-save.tgz /tmp/restore-data/ 2>/dev/null || true
 
 # ── Save for other steps ───────────────────────────────────
 echo "TS_IP=$TS_IP" >> $GITHUB_ENV

@@ -26,11 +26,13 @@ echo "   🚀 Starting x11vnc on display :0..."
 pkill -f "x11vnc" 2>/dev/null || true
 sleep 1
 
-# Get VNC password
+# Get VNC password - build the correct args
 VNC_PASS_FILE="$HOME/.vnc/passwd"
 VNC_PASS_ARGS=""
+NOPW_FLAG="-nopw"  # Default: no password required
 if [ -f "$VNC_PASS_FILE" ]; then
   VNC_PASS_ARGS="-rfbauth $VNC_PASS_FILE"
+  NOPW_FLAG=""  # Don't use -nopw when we have a password file
 fi
 
 # Start x11vnc
@@ -40,7 +42,7 @@ x11vnc \
   $VNC_PASS_ARGS \
   -forever \
   -shared \
-  -nopw \
+  $NOPW_FLAG \
   -noxdamage \
   -nowf \
   -nowcr \
@@ -104,9 +106,9 @@ echo "   ✅ noVNC running (PID: $NOVNC_PID, port: $NOVNC_PORT)"
 
 # ── Save connection info ───────────────────────────────────
 VNC_PASS=$(cat /tmp/vnc-password.txt 2>/dev/null || echo "none")
-echo "NOVNC_PORT=$NOVNC_PORT" >> $GITHUB_ENV
-echo "NOVNC_PID=$NOVNC_PID" >> $GITHUB_ENV
-echo "X11VNC_PID=$X11VNC_PID" >> $GITHUB_ENV
+echo "NOVNC_PORT=$NOVNC_PORT" >> "${GITHUB_ENV:-/dev/null}"
+echo "NOVNC_PID=$NOVNC_PID" >> "${GITHUB_ENV:-/dev/null}"
+echo "X11VNC_PID=$X11VNC_PID" >> "${GITHUB_ENV:-/dev/null}"
 
 echo ""
 echo "✅ noVNC is live on port $NOVNC_PORT!"

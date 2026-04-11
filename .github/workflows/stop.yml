@@ -92,25 +92,33 @@ jobs:
               continue
             fi
 
-            echo "$ALL_RUNS" | jq -r '.[] | .databaseId' 2>/dev/null | while read -r RUN_ID; do
+            # Use process substitution to avoid subshell variable issue
+            while read -r RUN_ID; do
               if [ -n "$RUN_ID" ]; then
                 echo "   Cancelling run $RUN_ID..."
-                gh run cancel "$RUN_ID" 2>/dev/null && echo "   ✅ Cancelled!" || echo "   ⚠️  Failed to cancel"
-                CANCELLED=$((CANCELLED + 1))
+                if gh run cancel "$RUN_ID" 2>/dev/null; then
+                  echo "   ✅ Cancelled!"
+                  CANCELLED=$((CANCELLED + 1))
+                else
+                  echo "   ⚠️  Failed to cancel"
+                fi
               fi
-            done
+            done < <(echo "$ALL_RUNS" | jq -r '.[] | .databaseId' 2>/dev/null)
           done
 
           # Also cancel keepalive-related runs
           echo ""
           echo "🔍 Checking keepalive runs..."
           KEEPALIVE_RUNS=$(gh run list --status="in_progress" --json databaseId,name --limit 10 2>/dev/null || echo "[]")
-          echo "$KEEPALIVE_RUNS" | jq -r '.[] | select(.name | test("Code-Server|VPS|Web Host|Free GHA")) | .databaseId' 2>/dev/null | while read -r RUN_ID; do
+          while read -r RUN_ID; do
             if [ -n "$RUN_ID" ]; then
               echo "   Cancelling run $RUN_ID..."
-              gh run cancel "$RUN_ID" 2>/dev/null && echo "   ✅ Cancelled!" || true
+              if gh run cancel "$RUN_ID" 2>/dev/null; then
+                echo "   ✅ Cancelled!"
+                CANCELLED=$((CANCELLED + 1))
+              fi
             fi
-          done
+          done < <(echo "$KEEPALIVE_RUNS" | jq -r '.[] | select(.name | test("Code-Server|VPS|Web Host|Free GHA")) | .databaseId' 2>/dev/null)
 
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -25,30 +25,27 @@ echo "   ⚙️  Configuring xRDP..."
 XRDP_INI="/etc/xrdp/xrdp.ini"
 
 if [ -f "$XRDP_INI" ]; then
-  # Set max connections
-  sudo sed -i 's/max_bpp=32/max_bpp=32/' "$XRDP_INI"
-  sudo sed -i 's/port=3389/port=3389/' "$XRDP_INI"
-
   # Set security layer to negotiate (more compatible)
-  sudo sed -i 's/security_layer=negotiate/security_layer=negotiate/' "$XRDP_INI" 2>/dev/null || true
   sudo sed -i 's/security_layer=rdp/security_layer=negotiate/' "$XRDP_INI" 2>/dev/null || true
   sudo sed -i 's/security_layer=tls/security_layer=negotiate/' "$XRDP_INI" 2>/dev/null || true
 
-  # Allow any encryption
-  sudo sed -i 's/crypt_level=high/crypt_level=low/' "$XRDP_INI" 2>/dev/null || true
-  sudo sed -i 's/crypt_level=medium/crypt_level=low/' "$XRDP_INI" 2>/dev/null || true
+  # Keep medium encryption (security vs compatibility balance)
+  sudo sed -i 's/crypt_level=high/crypt_level=medium/' "$XRDP_INI" 2>/dev/null || true
+  sudo sed -i 's/crypt_level=low/crypt_level=medium/' "$XRDP_INI" 2>/dev/null || true
 fi
 
 # ── Set up the runner as xRDP user ─────────────────────────
 # Configure xRDP to allow password-less or runner access
-echo "runner" | sudo xauth add "$DISPLAY" . "$(xxd -l 16 -p /dev/urandom)" 2>/dev/null || true
+DISPLAY_VAL="${DISPLAY:-:0}"
+echo "runner" | sudo xauth add "$DISPLAY_VAL" . "$(xxd -l 16 -p /dev/urandom)" 2>/dev/null || true
 
 # Set a password for the runner user (needed for RDP auth)
 RDP_PASS="${RDP_PASSWORD:-$(openssl rand -base64 12)}"
 echo "runner:$RDP_PASS" | sudo chpasswd 2>/dev/null || true
 echo "$RDP_PASS" > /tmp/rdp-password.txt
+chmod 600 /tmp/rdp-password.txt
 
-# Configure session to connect to the existing display
+# Configure session to connect to the existing XFCE desktop
 XRDP_STARTWM="/etc/xrdp/startwm.sh"
 if [ -f "$XRDP_STARTWM" ]; then
   sudo cp "$XRDP_STARTWM" "${XRDP_STARTWM}.bak"
@@ -56,7 +53,13 @@ if [ -f "$XRDP_STARTWM" ]; then
 #!/bin/sh
 # Connect to the existing XFCE session on display :0
 export DISPLAY=:0
-exec /bin/bash
+if command -v startxfce4 > /dev/null 2>&1; then
+  exec startxfce4
+elif command -v xfce4-session > /dev/null 2>&1; then
+  exec xfce4-session
+else
+  exec /bin/bash
+fi
 XEOF
   sudo chmod +x "$XRDP_STARTWM"
 fi
@@ -82,8 +85,10 @@ else
   echo "   ⚠️  xRDP process not detected — will use Tailscale for access"
 fi
 
-# Save password for display
-echo "RDP_PASS=$RDP_PASS" >> $GITHUB_ENV
+# Save password for display (use GITHUB_ENV if available)
+if [ -n "${GITHUB_ENV:-}" ]; then
+  echo "RDP_PASS=$RDP_PASS" >> "$GITHUB_ENV"
+fi
 
 echo ""
 echo "✅ xRDP setup complete!"
