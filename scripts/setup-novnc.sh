@@ -13,9 +13,10 @@ echo "🖥️  Setting up noVNC..."
 
 # ── Install x11vnc (VNC server for the X11 display) ─────────
 if ! command -v x11vnc &>/dev/null; then
+  echo "   ⬇️  Installing x11vnc..."
   sudo apt-get install -y -qq x11vnc 2>/dev/null || {
     echo "❌ Failed to install x11vnc"
-    exit 1
+    kill -INT $$
   }
   echo "   ✅ x11vnc installed"
 else
@@ -43,7 +44,7 @@ else
     cd /opt
     sudo git clone --depth 1 https://github.com/novnc/noVNC.git 2>/dev/null || {
       echo "❌ Failed to clone noVNC"
-      exit 1
+      kill -INT $$
     }
     # Cache the download
     if [ -n "${CACHE_DIR:-}" ]; then
@@ -55,18 +56,18 @@ fi
 
 # ── Install websockify (WebSocket proxy) ────────────────────
 if command -v websockify &>/dev/null; then
-  echo "   ✅ websockify already available"
+  echo "   ✅ websockify already available (system)"
 elif [ -f "$WEBSOCKIFY_PY" ]; then
   echo "   ✅ websockify available via noVNC"
 else
   echo "   ⬇️  Installing websockify..."
-  sudo pip3 install websockify numpy 2>/dev/null || {
-    # Fallback: use noVNC's bundled websockify
-    if [ ! -f "$WEBSOCKIFY_PY" ]; then
-      cd "$NOVNC_DIR/utils"
-      sudo git clone --depth 1 https://github.com/novnc/websockify.git 2>/dev/null || true
-    fi
+  sudo apt-get install -y -qq python3-websockify python3-numpy 2>/dev/null || {
+    sudo pip3 install --quiet websockify numpy 2>/dev/null || true
   }
+  if [ ! -f "$WEBSOCKIFY_PY" ] && ! command -v websockify &>/dev/null; then
+    cd "$NOVNC_DIR/utils"
+    sudo git clone --depth 1 https://github.com/novnc/websockify.git 2>/dev/null || true
+  fi
   echo "   ✅ websockify ready"
 fi
 
@@ -76,16 +77,13 @@ mkdir -p "$HOME/.vnc"
 
 if [ ! -f "$VNC_PASS_FILE" ]; then
   VNC_PASS="${VNC_PASSWORD:-$(openssl rand -hex 6)}"
-  # Use x11vnc's built-in password storage (creates proper binary format)
   x11vnc -storepasswd "$VNC_PASS" "$VNC_PASS_FILE" 2>/dev/null || {
-    # Manual creation if x11vnc's -storepasswd fails
-    echo "$VNC_PASS" | vncpasswd -f > "$VNC_PASS_FILE" 2>/dev/null || {
-      # Last resort: use x11vnc again with explicit display
-      mkdir -p "$HOME/.vnc"
+    if command -v vncpasswd &>/dev/null; then
+      echo "$VNC_PASS" | vncpasswd -f > "$VNC_PASS_FILE" 2>/dev/null
+    else
       x11vnc -storepasswd "$VNC_PASS" "$VNC_PASS_FILE"
-    }
+    fi
   }
-  # Save password for display (restrict permissions)
   echo "$VNC_PASS" > /tmp/vnc-password.txt
   chmod 600 "$VNC_PASS_FILE" /tmp/vnc-password.txt
   echo "   🔑 VNC password generated"

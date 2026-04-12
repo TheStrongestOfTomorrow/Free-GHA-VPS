@@ -1,0 +1,3 @@
+## 2025-04-12 - [Ubuntu 24.04 deb822 Mirror Support & apt Consolidation]
+**Learning:** Ubuntu 24.04 uses the `deb822` format for `/etc/apt/sources.list.d/ubuntu.sources`, rendering legacy `sed` commands on `/etc/apt/sources.list` ineffective for mirror speed-ups. Additionally, `pip3` installation of packages like `numpy` and `websockify` adds significant overhead (potential source builds/large downloads) compared to `apt-get` system packages which are often pre-compiled and available in local mirrors.
+**Action:** Always check for `ubuntu.sources` on newer Ubuntu releases and consolidate `apt-get install` calls to reduce dependency resolution overhead. Prefer system packages over `pip` in CI/CD setup scripts for core dependencies.

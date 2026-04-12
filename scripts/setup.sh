@@ -15,6 +15,11 @@ APT_CACHE="$CACHE_DIR/apt-cache"
 mkdir -p "$PACKAGES_DIR" "$DEBS_DIR" "$APT_CACHE"
 
 # ── Speed up apt ──────────────────────────────────────────────
+# Support both legacy and deb822 (Ubuntu 24.04+) formats
+if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+  sudo sed -i 's|http://archive.ubuntu.com|http://mirrors.ubuntu.com/mirrors.txt|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+  sudo sed -i 's|http://us-central1.gce.archive.ubuntu.com|http://mirrors.ubuntu.com/mirrors.txt|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+fi
 sudo sed -i 's|^deb http://archive|deb mirror://mirrors.ubuntu.com/mirrors.txt|g' /etc/apt/sources.list 2>/dev/null || true
 
 # Copy cached apt packages back to apt cache
@@ -24,26 +29,6 @@ if [ "$(ls -A "$APT_CACHE" 2>/dev/null)" ]; then
 fi
 
 sudo apt-get update -qq 2>/dev/null
-
-# ── Helper: install from cache if available, else download ───
-install_or_cache() {
-  local NAME="$1"
-  shift
-  if [ "$(ls -A "$DEBS_DIR" 2>/dev/null)" ]; then
-    echo "📦 Installing $NAME (from cache)..."
-  else
-    echo "📦 Installing $NAME..."
-  fi
-  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$@" 2>/dev/null || true
-}
-
-# ── Install virtual display ───────────────────────────────────
-install_or_cache "Xvfb" xvfb
-
-# ── Install lightweight desktop environment (XFCE4) ──────────
-install_or_cache "XFCE4" \
-  xfce4 xfce4-terminal xfce4-whiskermenu-plugin \
-  xfce4-panel xfce4-settings dbus-x11 at-spi2-core
 
 # ── Install Google Chrome ────────────────────────────────────
 echo "📦 Installing Google Chrome..."
@@ -71,24 +56,19 @@ else
   fi
 fi
 
-# ── Install essential utilities ──────────────────────────────
-install_or_cache "utilities" \
-  curl wget git nano htop neofetch python3 python3-pip \
-  jq net-tools unzip expect zstd
-
-# ── Install connection packages (noVNC, xRDP, etc.) ────────
-echo "📦 Installing remote desktop packages..."
+# ── Install all packages at once for speed ──────────────────
+# Consolidating Xvfb, XFCE4, Utilities, and Remote Desktop packages
+# Also replaced pip3 install with python3-websockify and python3-numpy
+echo "📦 Installing system and remote desktop packages..."
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-  x11vnc \
-  xrdp \
-  ssh \
-  openssl \
-  xxd \
+  xvfb \
+  xfce4 xfce4-terminal xfce4-whiskermenu-plugin \
+  xfce4-panel xfce4-settings dbus-x11 at-spi2-core \
+  curl wget git nano htop neofetch python3 python3-pip \
+  jq net-tools unzip expect zstd \
+  x11vnc xrdp ssh openssl xxd \
+  python3-websockify python3-numpy \
   > /dev/null 2>&1
-
-# ── Install Python packages for noVNC ──────────────────────
-echo "📦 Installing Python packages for noVNC..."
-sudo pip3 install --quiet websockify numpy 2>/dev/null || true
 
 # ── Download cloudflared (tunnel binary) ────────────────────
 echo "📦 Downloading cloudflared..."
