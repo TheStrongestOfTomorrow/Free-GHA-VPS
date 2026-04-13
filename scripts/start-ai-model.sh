@@ -409,6 +409,27 @@ setInterval(checkStatus, 30000);
 document.getElementById('modelBadge').textContent = MODEL;
 document.getElementById('modelName').textContent = MODEL;
 
+// Color-code the model badge by family
+(function() {
+  const badge = document.getElementById('modelBadge');
+  if (MODEL.startsWith('gemma4')) {
+    badge.style.background = '#8b5cf6'; badge.textContent = 'Gemma 4 • ' + MODEL;
+  } else if (MODEL.startsWith('gemma3n')) {
+    badge.style.background = '#f59e0b'; badge.textContent = 'Gemma 3n • ' + MODEL;
+  } else if (MODEL.startsWith('gemma3')) {
+    badge.style.background = '#238636'; badge.textContent = 'Gemma 3 • ' + MODEL;
+  } else if (MODEL.startsWith('gemma2')) {
+    badge.style.background = '#1f6feb'; badge.textContent = 'Gemma 2 • ' + MODEL;
+  } else if (MODEL.startsWith('codegemma')) {
+    badge.style.background = '#da3633'; badge.textContent = 'CodeGemma • ' + MODEL;
+  } else if (MODEL.startsWith('shieldgemma')) {
+    badge.style.background = '#6e40c9'; badge.textContent = 'ShieldGemma • ' + MODEL;
+  } else {
+    badge.textContent = 'Gemma • ' + MODEL;
+  }
+  document.getElementById('modelName').textContent = badge.textContent;
+})();
+
 // If no password required, auto-login
 if (!('__HAS_PASSWORD__' === 'true')) {
   doLoginNoPass();

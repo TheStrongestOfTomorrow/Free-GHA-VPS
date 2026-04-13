@@ -9,12 +9,34 @@ on:
         default: 'gemma3:1b'
         type: choice
         options:
+          # ── Gemma 4 (Latest) ──
+          - 'gemma4:e2b'
+          - 'gemma4:e4b'
+          - 'gemma4:26b'
+          - 'gemma4:31b'
+          # ── Gemma 3n (On-device) ──
+          - 'gemma3n:e2b'
+          - 'gemma3n:e4b'
+          # ── Gemma 3 ──
+          - 'gemma3:270m'
           - 'gemma3:1b'
           - 'gemma3:4b'
+          - 'gemma3:12b'
+          - 'gemma3:27b'
+          # ── Gemma 2 ──
           - 'gemma2:2b'
           - 'gemma2:9b'
+          - 'gemma2:27b'
+          # ── Gemma 1 ──
           - 'gemma:2b'
           - 'gemma:7b'
+          # ── CodeGemma (Code) ──
+          - 'codegemma:2b'
+          - 'codegemma:7b'
+          # ── ShieldGemma (Safety) ──
+          - 'shieldgemma:2b'
+          - 'shieldgemma:9b'
+          - 'shieldgemma:27b'
       password:
         description: '🔒 Chat UI password (min 6 chars, or leave blank for auto)'
         required: false
