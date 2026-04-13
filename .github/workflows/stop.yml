@@ -11,6 +11,7 @@ on:
           - 'vps'
           - 'code-server'
           - 'web-host'
+          - 'ai-model'
           - 'all'
       save_data:
         description: 'Save data before stopping?'
@@ -73,6 +74,9 @@ jobs:
           if [ "$TARGET" = "web-host" ] || [ "$TARGET" = "all" ]; then
             WORKFLOW_FILES="${WORKFLOW_FILES:-} .github/workflows/web-host.yml"
           fi
+          if [ "$TARGET" = "ai-model" ] || [ "$TARGET" = "all" ]; then
+            WORKFLOW_FILES="${WORKFLOW_FILES:-} .github/workflows/ai-model.yml"
+          fi
 
           CANCELLED=0
 
@@ -118,7 +122,7 @@ jobs:
                 CANCELLED=$((CANCELLED + 1))
               fi
             fi
-          done < <(echo "$KEEPALIVE_RUNS" | jq -r '.[] | select(.name | test("Code-Server|VPS|Web Host|Free GHA")) | .databaseId' 2>/dev/null)
+          done < <(echo "$KEEPALIVE_RUNS" | jq -r '.[] | select(.name | test("Code-Server|VPS|Web Host|AI Model|Free GHA")) | .databaseId' 2>/dev/null)
 
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

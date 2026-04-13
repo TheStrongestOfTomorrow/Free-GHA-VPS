@@ -1,10 +1,22 @@
-name: 💻 Code-Server (Browser VS Code)
+name: 🤖 AI Model (Gemma)
 
 on:
   workflow_dispatch:
     inputs:
+      model:
+        description: '🤖 Gemma model to run'
+        required: false
+        default: 'gemma3:1b'
+        type: choice
+        options:
+          - 'gemma3:1b'
+          - 'gemma3:4b'
+          - 'gemma2:2b'
+          - 'gemma2:9b'
+          - 'gemma:2b'
+          - 'gemma:7b'
       password:
-        description: '🔒 Code-server password (min 6 chars, or leave blank for auto)'
+        description: '🔒 Chat UI password (min 6 chars, or leave blank for auto)'
         required: false
         default: ''
         type: string
@@ -30,28 +42,20 @@ on:
           - 'github-only'
           - 'auto'
           - 'drive-only'
-      clone_repo:
-        description: '📦 Repo URL to clone (optional, for your project)'
-        required: false
-        default: ''
-        type: string
   repository_dispatch:
-    types: [start_codeserver]
+    types: [start_ai_model]
 
 permissions:
   contents: write
 
 concurrency:
-  group: code-server
+  group: ai-model
   cancel-in-progress: false
 
 jobs:
-  code-server:
+  ai-model:
     runs-on: ubuntu-latest
     timeout-minutes: 35
-
-    env:
-      DISPLAY: :0
 
     steps:
       - name: 📥 Checkout Repository
@@ -61,32 +65,33 @@ jobs:
       - name: 🔄 Normalize Inputs
         id: inputs
         run: |
+          MODEL="${{ github.event.inputs.model }}"
           PASSWORD="${{ github.event.inputs.password }}"
           DURATION="${{ github.event.inputs.duration }}"
           TUNNEL="${{ github.event.inputs.tunnel }}"
           STORAGE="${{ github.event.inputs.storage }}"
-          CLONE_REPO="${{ github.event.inputs.clone_repo }}"
 
+          MODEL="${MODEL:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.model // "gemma3:1b"' 2>/dev/null)}"
           PASSWORD="${PASSWORD:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.password // empty' 2>/dev/null)}"
           DURATION="${DURATION:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.duration // "30"' 2>/dev/null)}"
           TUNNEL="${TUNNEL:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.tunnel // "cloudflare"' 2>/dev/null)}"
           STORAGE="${STORAGE:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.storage // "github-only"' 2>/dev/null)}"
-          CLONE_REPO="${CLONE_REPO:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.clone_repo // empty' 2>/dev/null)}"
 
           DURATION="${DURATION:-30}"
+          MODEL="${MODEL:-gemma3:1b}"
           TUNNEL="${TUNNEL:-cloudflare}"
           STORAGE="${STORAGE:-github-only}"
 
+          echo "model=$MODEL" >> $GITHUB_ENV
           echo "password=$PASSWORD" >> $GITHUB_ENV
           echo "duration=$DURATION" >> $GITHUB_ENV
           echo "tunnel=$TUNNEL" >> $GITHUB_ENV
           echo "storage=$STORAGE" >> $GITHUB_ENV
-          echo "clone_repo=$CLONE_REPO" >> $GITHUB_ENV
 
-          echo "✅ Inputs: Duration=${DURATION}min | Tunnel=$TUNNEL | Storage=$STORAGE"
+          echo "✅ Inputs: Model=$MODEL | Duration=${DURATION}min | Tunnel=$TUNNEL"
 
       # ── NOTIFICATIONS ────────────────────────────────────────
-      - name: "📨 Notify: Session Starting"
+      - name: "📨 Notify: AI Model Starting"
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -94,142 +99,130 @@ jobs:
         run: |
           chmod +x scripts/notify.sh
           bash scripts/notify.sh "start" \
-            "💻 Code-Server Starting" \
-            "Your browser VS Code is spinning up...\n⏱️ Duration: ${DURATION} min\n🌐 Tunnel: $TUNNEL" \
+            "🤖 AI Model Starting" \
+            "Setting up AI inference server...\n🤖 Model: $MODEL\n⏱️ Duration: ${DURATION} min" \
             "3447003"
 
       # ── CACHE ────────────────────────────────────────────────
-      - name: ⚡ Cache Code-Server Packages
-        id: cs-cache
+      - name: ⚡ Cache AI Model Packages
+        id: ai-cache
         uses: actions/cache@v4
         with:
-          path: /tmp/cs-cache
-          key: cs-packages-v1-${{ runner.os }}-${{ github.run_id }}
+          path: /tmp/ai-cache
+          key: ai-packages-v1-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
-            cs-packages-v1-${{ runner.os }}-
+            ai-packages-v1-${{ runner.os }}-
 
-      # ── RESTORE WORKSPACE DATA ───────────────────────────────
-      - name: ♻️ Restore Workspace Data
+      # ── RESTORE DATA ─────────────────────────────────────────
+      - name: ♻️ Restore AI Data
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
           RCLONE_REMOTE: ${{ vars.RCLONE_REMOTE }}
           STORAGE_MODE: ${{ env.storage }}
-          DATA_BRANCH: code-server-data
-          RELEASE_TAG: code-server-data
+          DATA_BRANCH: ai-data
+          RELEASE_TAG: ai-data
         run: |
           chmod +x scripts/restore-data.sh
           bash scripts/restore-data.sh
 
-      # ── INSTALL CODE-SERVER ─────────────────────────────────
-      - name: 💻 Install Code-Server
+      # ── INSTALL AI MODEL ────────────────────────────────────
+      - name: 🤖 Install AI Model Environment
         run: |
-          if [ "${{ steps.cs-cache.outputs.cache-hit }}" = "true" ]; then
+          if [ "${{ steps.ai-cache.outputs.cache-hit }}" = "true" ]; then
             echo "⚡ Cache hit! Fast install..."
           else
             echo "📦 Cache miss — full install..."
           fi
-          chmod +x scripts/setup-codeserver.sh
-          bash scripts/setup-codeserver.sh
+          chmod +x scripts/setup-ai-model.sh
+          bash scripts/setup-ai-model.sh "$MODEL"
 
       - name: 💾 Save Cache (first run)
-        if: steps.cs-cache.outputs.cache-hit != 'true'
+        if: steps.ai-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: /tmp/cs-cache
-          key: cs-packages-v1-${{ runner.os }}-${{ github.run_id }}
+          path: /tmp/ai-cache
+          key: ai-packages-v1-${{ runner.os }}-${{ github.run_id }}
 
-      # ── RESTORE WORKSPACE FILES ─────────────────────────────
-      - name: ♻️ Restore Workspace Files
+      # ── RESTORE AI FILES ───────────────────────────────────
+      - name: ♻️ Restore AI Chat Data
         run: |
           if [ -d /tmp/restore-data ]; then
-            # Fixed: tar was created with -C /home/runner, so paths are relative (no /home/ prefix)
-            sudo cp -a /tmp/restore-data/workspace /home/runner/ 2>/dev/null || true
-            sudo mkdir -p /home/runner/.local/share
-            sudo cp -a /tmp/restore-data/.local/share/code-server /home/runner/.local/share/code-server 2>/dev/null || true
-            sudo mkdir -p /home/runner/.config
-            sudo cp -a /tmp/restore-data/.config/code-server /home/runner/.config/code-server 2>/dev/null || true
-            sudo cp -a /tmp/restore-data/.bashrc /home/runner/.bashrc 2>/dev/null || true
-            sudo cp -a /tmp/restore-data/.gitconfig /home/runner/.gitconfig 2>/dev/null || true
-            sudo cp -a /tmp/restore-data/.ssh /home/runner/.ssh 2>/dev/null || true
-            sudo cp -a /tmp/restore-data/.profile /home/runner/.profile 2>/dev/null || true
-            sudo chown -R runner:runner /home/runner/workspace /home/runner/.local/share/code-server /home/runner/.config/code-server 2>/dev/null || true
-            echo "✅ Workspace files restored"
+            sudo mkdir -p /home/runner/ai-data
+            sudo cp -a /tmp/restore-data/ai-data /home/runner/ 2>/dev/null || true
+            sudo mkdir -p /home/runner/.ollama
+            sudo cp -a /tmp/restore-data/.ollama/modelfile /home/runner/.ollama/ 2>/dev/null || true
+            sudo chown -R runner:runner /home/runner/ai-data /home/runner/.ollama 2>/dev/null || true
+            echo "✅ AI chat data restored"
           else
-            mkdir -p /home/runner/workspace
+            sudo mkdir -p /home/runner/ai-data
           fi
 
-      # ── CLONE USER REPO (optional) ──────────────────────────
-      - name: 📦 Clone User Repository
-        if: env.clone_repo != ''
-        run: |
-          echo "📦 Cloning $clone_repo..."
-          cd /home/runner/workspace
-          git clone "$clone_repo" . 2>/dev/null || {
-            echo "⚠️ Clone failed, repo might already have files"
-          }
-          sudo chown -R runner:runner /home/runner/workspace
-          echo "✅ Repository cloned to workspace"
-
-      # ── START CODE-SERVER ───────────────────────────────────
-      - name: 🚀 Start Code-Server
+      # ── START AI MODEL SERVER ───────────────────────────────
+      - name: 🚀 Start AI Model Server
         env:
-          CS_PASSWORD: ${{ env.password }}
+          AI_PASSWORD: ${{ env.password }}
+          AI_MODEL: ${{ env.model }}
         run: |
-          chmod +x scripts/start-codeserver.sh
-          bash scripts/start-codeserver.sh "$CS_PASSWORD"
+          chmod +x scripts/start-ai-model.sh
+          bash scripts/start-ai-model.sh "$AI_MODEL" "$AI_PASSWORD"
 
       # ── TUNNEL ───────────────────────────────────────────────
       - name: ☁️ Cloudflare Tunnel
         if: env.tunnel == 'cloudflare'
         run: |
           chmod +x scripts/tunnel-cloudflare.sh
-          bash scripts/tunnel-cloudflare.sh 8080
+          bash scripts/tunnel-cloudflare.sh 11435
 
       - name: 🌐 localhost.run Tunnel
         if: env.tunnel == 'localhost'
         run: |
           chmod +x scripts/tunnel-localhost.sh
-          bash scripts/tunnel-localhost.sh 8080
+          bash scripts/tunnel-localhost.sh 11435
 
       # ── READY ────────────────────────────────────────────────
-      - name: ✅ Code-Server is Ready
+      - name: ✅ AI Model is Ready
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           URL="${TUNNEL_URL:-https://pending.trycloudflare.com}"
-          PASS="${CS_PASSWORD:-$(cat /tmp/cs-password.txt 2>/dev/null || echo 'see-logs')}"
+          PASS="${AI_PASSWORD:-$(cat /tmp/ai-password.txt 2>/dev/null || echo 'see-logs')}"
+          OLLAMA_URL="${URL}"
 
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "  💻  YOUR CODE-SERVER IS NOW RUNNING!"
+          echo "  🤖  YOUR AI MODEL IS NOW RUNNING!"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "  🔗 URL:      ${URL}/"
-          echo "  🔑 Password: $PASS"
-          echo "  ⏱️  Session:  ${DURATION} minutes"
-          echo "  📁 Workspace: /home/runner/workspace"
+          echo "  🤖 Model:     $MODEL"
+          echo "  🔗 Chat URL:  ${URL}/"
+          echo "  🔌 API URL:   ${URL}/api (Ollama-compatible)"
+          echo "  🔑 Password:  $PASS"
+          echo "  ⏱️  Session:   ${DURATION} minutes"
           echo ""
-          echo "  💡 Extend: Run 'Extend Session' workflow or send a dispatch!"
+          echo "  💡 API Example:"
+          echo "      curl ${URL}/api/generate -d '{\"model\":\"$MODEL\",\"prompt\":\"Hello!\"}'"
+          echo ""
+          echo "  💡 Extend: Run 'Extend Session' or send a dispatch!"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-          echo "::notice::💻 Code-Server READY! → ${URL}/ | Password: $PASS"
+          echo "::notice::🤖 AI Model READY! → ${URL}/ | Model: $MODEL | Password: $PASS"
 
           chmod +x scripts/notify.sh
           bash scripts/notify.sh "ready" \
-            "💻 Code-Server Ready!" \
-            "🔗 [Open Code-Server](${URL}/)\n🔑 Password: \`${PASS}\`\n⏱️ Duration: ${DURATION} min\n📁 Workspace: /home/runner/workspace" \
+            "🤖 AI Model is Ready!" \
+            "🔗 [Open Chat](${URL}/)\n🤖 Model: \`${MODEL}\`\n🔑 Password: \`${PASS}\`\n⏱️ Duration: ${DURATION} min" \
             "3066993"
 
       # ── KEEPALIVE ────────────────────────────────────────────
       - name: 🔄 Keepalive (Session Timer)
         run: |
-          chmod +x scripts/keepalive-codeserver.sh
-          bash scripts/keepalive-codeserver.sh "$DURATION"
+          chmod +x scripts/keepalive-ai.sh
+          bash scripts/keepalive-ai.sh "$DURATION"
 
       # ── SAVE DATA ────────────────────────────────────────────
-      - name: 💾 Save Workspace Data
+      - name: 💾 Save AI Data
         if: always()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -239,14 +232,14 @@ jobs:
           RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
           RCLONE_REMOTE: ${{ vars.RCLONE_REMOTE }}
           STORAGE_MODE: ${{ env.storage }}
-          DATA_BRANCH: code-server-data
-          RELEASE_TAG: code-server-data
+          DATA_BRANCH: ai-data
+          RELEASE_TAG: ai-data
           RUNNER_HOME: /home/runner
         run: |
-          chmod +x scripts/save-codeserver-data.sh
-          bash scripts/save-codeserver-data.sh
+          chmod +x scripts/save-ai-data.sh
+          bash scripts/save-ai-data.sh
 
-      - name: "📨 Notify: Session Ended"
+      - name: "📨 Notify: AI Session Ended"
         if: always()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -255,13 +248,14 @@ jobs:
         run: |
           chmod +x scripts/notify.sh
           bash scripts/notify.sh "end" \
-            "💻 Code-Server Session Ended" \
-            "Your coding session is over.\n💾 Data saved to \`code-server-data\` branch.\n🔄 Run the workflow again to resume." \
+            "🤖 AI Model Session Ended" \
+            "Your AI model session is over.\n💾 Data saved to \`ai-data\` branch.\n🔄 Run the workflow again to resume." \
             "15105570"
 
       # ── CLEANUP ──────────────────────────────────────────────
       - name: 🧹 Cleanup
         if: always()
         run: |
-          sudo pkill -f code-server 2>/dev/null || true
+          sudo pkill -f ollama 2>/dev/null || true
+          sudo pkill -f "python3.*ai-chat" 2>/dev/null || true
           sudo pkill -f cloudflared 2>/dev/null || true

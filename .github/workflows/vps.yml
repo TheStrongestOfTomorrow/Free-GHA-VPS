@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       pin:
-        description: '6+ digit PIN / password (digits only)'
-        required: true
+        description: '🔑 PIN/password (6+ characters, any letters/numbers, or leave blank for auto)'
+        required: false
+        default: ''
         type: string
       duration:
         description: 'Session duration in minutes (max 30)'
@@ -90,16 +91,12 @@ jobs:
 
           # Defaults
           if [ -z "$PIN" ]; then
-            PIN=$(openssl rand -hex 3)
-            echo "⚠️  No PIN provided — generated random PIN: $PIN"
+            PIN=$(openssl rand -base64 12 | tr -d '=/+' | head -c 8)
+            echo "⚠️  No PIN provided — generated random password: $PIN"
           fi
-          # Validate PIN is numeric and at least 6 digits
-          if ! [[ "$PIN" =~ ^[0-9]+$ ]]; then
-            echo "❌ PIN must be numeric (digits only). Got: $PIN"
-            exit 1
-          fi
+          # Validate PIN length (at least 6 characters)
           if [ ${#PIN} -lt 6 ]; then
-            echo "❌ PIN must be at least 6 digits. Got ${#PIN} digits."
+            echo "❌ PIN/password must be at least 6 characters. Got ${#PIN} characters."
             exit 1
           fi
           DURATION="${DURATION:-30}"

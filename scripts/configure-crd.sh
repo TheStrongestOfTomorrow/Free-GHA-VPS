@@ -11,13 +11,7 @@ MIN_PIN_LEN=6
 
 # ── Validate PIN ─────────────────────────────────────────────
 if [ ${#PIN} -lt $MIN_PIN_LEN ]; then
-  echo "❌ PIN must be at least $MIN_PIN_LEN digits"
-  exit 1
-fi
-
-# Validate PIN is numeric
-if ! [[ "$PIN" =~ ^[0-9]+$ ]]; then
-  echo "❌ PIN must be numeric (digits only)"
+  echo "❌ PIN/password must be at least $MIN_PIN_LEN characters"
   exit 1
 fi
 

@@ -18,7 +18,7 @@ TITLE="${2:-Notification}"
 MESSAGE="${3:-No details provided}"
 COLOR="${4:-3447003}"
 REPO="${GITHUB_REPOSITORY:-Free-GHA-VPS}"
-RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/${REPO}/actions/runs}/${GITHUB_RUN_ID:-0}"
+RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/${REPO}/actions/runs/${GITHUB_RUN_ID:-0}"
 TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 # ═══════════════════════════════════════════════════════════════

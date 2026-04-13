@@ -2,14 +2,14 @@
 
 # 🖥️ Free GHA VPS
 
-**Get a free VPS, code editor, or web host — fork, run, connect. That's it.**
+**Get a free VPS, code editor, web host, or AI model — fork, run, connect. That's it.**
 
 [![GitHub Actions](https://img.shields.io/badge/GitHub-Actions-2088FF?logo=github&logoColor=white)](https://github.com/features/actions)
 [![Storage](https://img.shields.io/badge/Storage-Up%20to%2015GB-34A853?logo=googledrive&logoColor=white)](#-storage)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![3 Workflows](https://img.shields.io/badge/Workflows-3-purple)](#-workflows)
+[![4 Workflows](https://img.shields.io/badge/Workflows-4-purple)](#-workflows)
 
-🖥️ **Remote Desktop** · 💻 **Code Editor** · 🌐 **Web Hosting** · 📨 **Notifications** · 💾 **Up to 15GB** · ⚡ **Cached installs**
+🖥️ **Remote Desktop** · 💻 **Code Editor** · 🌐 **Web Hosting** · 🤖 **AI Models** · 📨 **Notifications** · 💾 **Up to 15GB** · ⚡ **Cached installs**
 
 </div>
 
@@ -17,15 +17,16 @@
 
 ## 🎯 What Is This?
 
-Free GHA VPS gives you **3 free services** powered by GitHub Actions runners:
+Free GHA VPS gives you **4 free services** powered by GitHub Actions runners:
 
 | Service | Description | Data Saved To |
 |---------|-------------|---------------|
 | 🖥️ **Free GHA VPS** | Full remote desktop (XFCE4) with 5 connection methods | `vps-data` branch |
 | 💻 **Code-Server** | Browser-based VS Code for coding on the go | `code-server-data` branch |
 | 🌐 **Free Web Host** | Host any website/app with auto-detected framework | `web-data` branch |
+| 🤖 **AI Model (Gemma)** | Run Google Gemma models with browser chat UI | `ai-data` branch |
 
-All three share: 30-min sessions, extendable up to 3 hours, Discord + Telegram notifications, smart caching, and persistent storage.
+All four share: 30-min sessions, extendable up to 3 hours, Discord + Telegram notifications, smart caching, and persistent storage.
 
 ---
 
@@ -62,7 +63,7 @@ Full XFCE4 desktop with 5 ways to connect:
 ### How to Run
 
 1. Actions → **🖥️ Free GHA VPS** → Run workflow
-2. **PIN** — any 6+ digit number (your password)
+2. **PIN** — any 6+ character password (letters/numbers, or leave blank for auto)
 3. **connection** — pick a method (see table above)
 4. **resolution** — `1920x1080` / `1280x720` / `2560x1440`
 5. **storage** — leave at `auto`
@@ -151,13 +152,65 @@ A public HTTPS URL appears in the logs. Share it, point a domain to it, or use i
 
 ---
 
-## ⏰ Extending Sessions
+## 🤖 AI Model (Google Gemma)
 
-All 3 workflows support session extension (up to 3 hours total):
+Run Google Gemma AI models directly in your browser with a beautiful chat interface. Powered by Ollama inference engine.
+
+### Supported Models
+
+| Model | Parameters | Download Size | Speed | Best For |
+|-------|:----------:|:-------------:|:-----:|----------|
+| **gemma3:1b** | 1B | ~800MB | ⚡⚡⚡ | Quick answers, lightweight tasks |
+| **gemma3:4b** | 4B | ~2.6GB | ⚡⚡ | Good balance of quality and speed |
+| **gemma2:2b** | 2B | ~1.5GB | ⚡⚡⚡ | Fast responses, decent quality |
+| **gemma2:9b** | 9B | ~5.3GB | ⚡ | Best quality (may be slow) |
+| **gemma:2b** | 2B | ~1.4GB | ⚡⚡⚡ | Original Gemma, fast |
+| **gemma:7b** | 7B | ~4.7GB | ⚡ | Original Gemma, quality |
+
+### How to Run
+
+1. Actions → **🤖 AI Model (Gemma)** → Run workflow
+2. **model** — pick a Gemma model (default: `gemma3:1b`)
+3. **password** — your chat UI password (min 6 chars, or leave blank for auto)
+4. **tunnel** — `cloudflare` (default) or `localhost`
+5. **duration** — leave at `30`
+
+### Connect
+
+A URL appears in the workflow logs. Open it → enter password → start chatting!
+
+### Features
+
+- 🌐 **Browser Chat UI** — Beautiful dark theme, Markdown rendering, streaming responses
+- 🔌 **Ollama API** — Full Ollama-compatible API for programmatic access
+- 💬 **Chat History** — Conversations saved between sessions
+- 🔒 **Password Protected** — Your AI instance is private
+- ⚡ **Streaming** — See responses in real-time as they generate
+- 📊 **Inference Stats** — Monitor tokens/sec and model performance
+
+### API Access
+
+The AI model server exposes an Ollama-compatible API. Example:
+
+```bash
+# Generate text
+curl https://your-url.trycloudflare.com/api/generate \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"model":"gemma3:1b","prompt":"Explain quantum computing"}'
+
+# Chat completion
+curl https://your-url.trycloudflare.com/api/chat \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"model":"gemma3:1b","messages":[{"role":"user","content":"Hello!"}]}'
+```
+
+---
+
+All 4 workflows support session extension (up to 3 hours total):
 
 1. Actions → **⏰ Extend Session** → Run
 2. Default: +30 minutes per extension (max 5 extensions)
-3. Works for VPS, Code-Server, AND Web Host — the extend signal is universal!
+3. Works for VPS, Code-Server, Web Host, AND AI Model — the extend signal is universal!
 
 ---
 
@@ -195,7 +248,7 @@ Get alerts on your phone/desktop when events happen — **zero dependencies, pur
 
 ## 💾 Storage
 
-All 3 workflows auto-save data between sessions using a 3-tier system:
+All 4 workflows auto-save data between sessions using a 3-tier system:
 
 | Tier | Storage | Setup | Best For |
 |------|---------|-------|----------|
@@ -230,6 +283,7 @@ Each workflow saves to its own isolated branch — no conflicts:
 - 🖥️ VPS → `vps-data`
 - 💻 Code-Server → `code-server-data`
 - 🌐 Web Host → `web-data`
+- 🤖 AI Model → `ai-data`
 
 ---
 
@@ -271,6 +325,15 @@ Check if the data branch exists. For Drive: verify `RCLONE_CONFIG` secret.
 ### "Notifications not working"
 Verify secrets are set correctly. Discord: check webhook URL. Telegram: verify token + chat ID by visiting `https://api.telegram.org/bot<TOKEN>/getMe`
 
+### "AI model not responding"
+The first inference request may be slow as the model loads into memory. Try a smaller model like `gemma3:1b`. Check Ollama logs in the workflow output.
+
+### "AI model download fails"
+Larger models need more disk space. Try `gemma3:1b` (~800MB). Check your storage isn't full from previous sessions.
+
+### "Chat UI shows 'Offline'"
+The Ollama server may need a moment to start. Wait 30 seconds and refresh. If still offline, check the workflow logs for errors.
+
 ---
 
 ## 📁 Repo Structure
@@ -281,7 +344,8 @@ Free-GHA-VPS/
 │   ├── vps.yml              # 🖥️ Remote desktop (5 connection methods)
 │   ├── code-server.yml      # 💻 Browser VS Code
 │   ├── web-host.yml         # 🌐 Web hosting
-│   └── extend.yml           # ⏰ Session extender (works for all 3)
+│   ├── ai-model.yml         # 🤖 AI model inference (Gemma)
+│   └── extend.yml           # ⏰ Session extender (works for all 4)
 ├── scripts/
 │   ├── setup.sh             # VPS environment installer (cached)
 │   ├── configure-crd.sh     # Chrome Remote Desktop PIN + auth
@@ -299,6 +363,10 @@ Free-GHA-VPS/
 │   ├── setup-webhost.sh     # Web host installer (cached)
 │   ├── start-webhost.sh     # Auto-detect + start web server
 │   ├── save-webhost-data.sh # Save web files
+│   ├── setup-ai-model.sh    # AI model installer (Ollama + Gemma)
+│   ├── start-ai-model.sh    # Launch AI model + chat UI
+│   ├── keepalive-ai.sh       # AI model keepalive + monitoring
+│   ├── save-ai-data.sh       # Save AI chat history + config
 │   ├── restore-data.sh      # Restore: Release → branch → Drive
 │   ├── save-data.sh         # Save: zstd → Release → Drive
 │   ├── keepalive.sh         # VPS timer + extension + auto-restart
@@ -313,24 +381,26 @@ Free-GHA-VPS/
 
 ## 🌟 All Features
 
-| Feature | VPS | Code-Server | Web Host |
-|---------|:-:|:-:|:-:|
-| 🖥️ Full Desktop | ✅ | ❌ | ❌ |
-| 💻 VS Code in Browser | ❌ | ✅ | ❌ |
-| 🌐 Public Web Hosting | ❌ | ❌ | ✅ |
-| 📨 Discord Notifications | ✅ | ✅ | ✅ |
-| 📨 Telegram Notifications | ✅ | ✅ | ✅ |
-| 🗜️ zstd Compression | ✅ | ✅ | ✅ |
-| ⚡ Package Cache | ✅ | ✅ | ✅ |
-| 📤 GitHub Releases | ✅ | ✅ | ✅ |
-| ☁️ Google Drive | ✅ | ✅ | ✅ |
-| 💾 Data Persists | ✅ | ✅ | ✅ |
-| ⏰ Extendable Sessions | ✅ | ✅ | ✅ |
-| 🔒 Concurrency Lock | ✅ | ✅ | ✅ |
-| 🔄 Auto Keepalive | ✅ | ✅ | ✅ |
-| ☁️ Cloudflare Tunnel | ✅ | ✅ | ✅ |
-| 📐 Resizable | ✅ | ❌ | ❌ |
-| 🚀 Zero Cost | ✅ | ✅ | ✅ |
+| Feature | VPS | Code-Server | Web Host | AI Model |
+|---------|:---:|:-----------:|:--------:|:--------:|
+| 🖥️ Full Desktop | ✅ | ❌ | ❌ | ❌ |
+| 💻 VS Code in Browser | ❌ | ✅ | ❌ | ❌ |
+| 🌐 Public Web Hosting | ❌ | ❌ | ✅ | ❌ |
+| 🤖 AI Model Inference | ❌ | ❌ | ❌ | ✅ |
+| 💬 Chat UI | ❌ | ❌ | ❌ | ✅ |
+| 📨 Discord Notifications | ✅ | ✅ | ✅ | ✅ |
+| 📨 Telegram Notifications | ✅ | ✅ | ✅ | ✅ |
+| 🗜️ zstd Compression | ✅ | ✅ | ✅ | ✅ |
+| ⚡ Package Cache | ✅ | ✅ | ✅ | ✅ |
+| 📤 GitHub Releases | ✅ | ✅ | ✅ | ✅ |
+| ☁️ Google Drive | ✅ | ✅ | ✅ | ✅ |
+| 💾 Data Persists | ✅ | ✅ | ✅ | ✅ |
+| ⏰ Extendable Sessions | ✅ | ✅ | ✅ | ✅ |
+| 🔒 Concurrency Lock | ✅ | ✅ | ✅ | ✅ |
+| 🔄 Auto Keepalive | ✅ | ✅ | ✅ | ✅ |
+| ☁️ Cloudflare Tunnel | ✅ | ✅ | ✅ | ✅ |
+| 📐 Resizable | ✅ | ❌ | ❌ | ❌ |
+| 🚀 Zero Cost | ✅ | ✅ | ✅ | ✅ |
 
 ---
 
