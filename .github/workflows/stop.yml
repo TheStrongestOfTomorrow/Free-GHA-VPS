@@ -28,7 +28,7 @@ permissions:
 jobs:
   stop:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
 
     steps:
       - name: 🔄 Normalize Inputs
@@ -58,6 +58,7 @@ jobs:
       - name: 🛑 Cancel Running Workflows
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
           TARGET="${{ env.target }}"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -65,64 +66,153 @@ jobs:
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
           # Map target to workflow file names
-          if [ "$TARGET" = "vps" ] || [ "$TARGET" = "all" ]; then
-            WORKFLOW_FILES=".github/workflows/vps.yml"
-          fi
-          if [ "$TARGET" = "code-server" ] || [ "$TARGET" = "all" ]; then
-            WORKFLOW_FILES="${WORKFLOW_FILES:-} .github/workflows/code-server.yml"
-          fi
-          if [ "$TARGET" = "web-host" ] || [ "$TARGET" = "all" ]; then
-            WORKFLOW_FILES="${WORKFLOW_FILES:-} .github/workflows/web-host.yml"
-          fi
-          if [ "$TARGET" = "ai-model" ] || [ "$TARGET" = "all" ]; then
-            WORKFLOW_FILES="${WORKFLOW_FILES:-} .github/workflows/ai-model.yml"
-          fi
+          declare -A WF_MAP
+          WF_MAP[vps]="vps.yml"
+          WF_MAP[code-server]="code-server.yml"
+          WF_MAP[web-host]="web-host.yml"
+          WF_MAP[ai-model]="ai-model.yml"
 
           CANCELLED=0
 
-          for WF in $WORKFLOW_FILES; do
-            WF_NAME=$(basename "$WF" .yml)
+          # Build list of workflows to cancel
+          WF_FILES=()
+          if [ "$TARGET" = "all" ]; then
+            for key in "${!WF_MAP[@]}"; do
+              WF_FILES+=("${WF_MAP[$key]}")
+            done
+          else
+            WF_FILES+=("${WF_MAP[$TARGET]}")
+          fi
+
+          for WF_FILE in "${WF_FILES[@]}"; do
+            WF_NAME=$(basename "$WF_FILE" .yml)
             echo ""
-            echo "🔍 Checking: $WF_NAME"
+            echo "🔍 Checking workflow: $WF_NAME ($WF_FILE)"
 
-            # Get active runs for this workflow (status=in_progress or status=queued)
-            RUNS=$(gh run list --workflow="$WF" --status="in_progress" --json databaseId,status,createdAt --limit 5 2>/dev/null || echo "[]")
-            QUEUED=$(gh run list --workflow="$WF" --status="queued" --json databaseId,status,createdAt --limit 5 2>/dev/null || echo "[]")
+            # Use GitHub API directly via curl (gh CLI may not be available)
+            # Get workflow ID from file name
+            WF_ID=$(curl -s -H "Authorization: token $GH_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/$REPO/actions/workflows" \
+              | jq -r ".workflows[] | select(.path == \".github/workflows/$WF_FILE\") | .id" 2>/dev/null)
 
-            ALL_RUNS=$(echo "$RUNS $QUEUED" | jq -s '.[0] + .[1]' 2>/dev/null || echo "[]")
+            if [ -z "$WF_ID" ]; then
+              echo "   ⚠️  Workflow not found, trying by name..."
+              WF_ID=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/repos/$REPO/actions/workflows" \
+                | jq -r ".workflows[] | select(.name | test(\"$WF_NAME\"; \"i\")) | .id" 2>/dev/null)
+            fi
 
-            if [ "$ALL_RUNS" = "null" ] || [ "$ALL_RUNS" = "[]" ]; then
-              echo "   No active runs"
+            if [ -z "$WF_ID" ]; then
+              echo "   ⚠️  Could not find workflow ID, skipping"
               continue
             fi
 
-            # Use process substitution to avoid subshell variable issue
-            while read -r RUN_ID; do
-              if [ -n "$RUN_ID" ]; then
-                echo "   Cancelling run $RUN_ID..."
-                if gh run cancel "$RUN_ID" 2>/dev/null; then
-                  echo "   ✅ Cancelled!"
-                  CANCELLED=$((CANCELLED + 1))
-                else
-                  echo "   ⚠️  Failed to cancel"
-                fi
+            echo "   Workflow ID: $WF_ID"
+
+            # Get in_progress runs
+            for STATUS in "in_progress" "queued" "waiting"; do
+              RUNS=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/repos/$REPO/actions/workflows/$WF_ID/runs?status=$STATUS&per_page=10" \
+                | jq -r '.workflow_runs[]?.id' 2>/dev/null || true)
+
+              if [ -z "$RUNS" ]; then
+                echo "   No $STATUS runs"
+                continue
               fi
-            done < <(echo "$ALL_RUNS" | jq -r '.[] | .databaseId' 2>/dev/null)
+
+              for RUN_ID in $RUNS; do
+                if [ -n "$RUN_ID" ]; then
+                  echo "   Cancelling run $RUN_ID ($STATUS)..."
+                  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+                    -H "Authorization: token $GH_TOKEN" \
+                    -H "Accept: application/vnd.github.v3+json" \
+                    "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID/cancel")
+                  if [ "$HTTP_CODE" = "202" ] || [ "$HTTP_CODE" = "204" ]; then
+                    echo "   ✅ Cancelled! (HTTP $HTTP_CODE)"
+                    CANCELLED=$((CANCELLED + 1))
+                  else
+                    echo "   ⚠️  Cancel returned HTTP $HTTP_CODE"
+                  fi
+                fi
+              done
+            done
           done
 
-          # Also cancel keepalive-related runs
+          # Also scan ALL running workflows by name pattern (catches anything missed)
           echo ""
-          echo "🔍 Checking keepalive runs..."
-          KEEPALIVE_RUNS=$(gh run list --status="in_progress" --json databaseId,name --limit 10 2>/dev/null || echo "[]")
-          while read -r RUN_ID; do
-            if [ -n "$RUN_ID" ]; then
-              echo "   Cancelling run $RUN_ID..."
-              if gh run cancel "$RUN_ID" 2>/dev/null; then
-                echo "   ✅ Cancelled!"
+          echo "🔍 Scanning all active runs for matching names..."
+          ALL_RUNS=$(curl -s -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$REPO/actions/runs?status=in_progress&per_page=50" \
+            | jq -r '.workflow_runs[]? | "\(.id)|\(.name)|\(.status)"' 2>/dev/null || true)
+
+          QUEUED_RUNS=$(curl -s -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$REPO/actions/runs?status=queued&per_page=50" \
+            | jq -r '.workflow_runs[]? | "\(.id)|\(.name)|\(.status)"' 2>/dev/null || true)
+
+          WAITING_RUNS=$(curl -s -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$REPO/actions/runs?status=waiting&per_page=50" \
+            | jq -r '.workflow_runs[]? | "\(.id)|\(.name)|\(.status)"' 2>/dev/null || true)
+
+          # Build name patterns to match
+          if [ "$TARGET" = "all" ]; then
+            PATTERNS="VPS|Code.Server|Web.Host|AI.Model"
+          elif [ "$TARGET" = "vps" ]; then
+            PATTERNS="VPS"
+          elif [ "$TARGET" = "code-server" ]; then
+            PATTERNS="Code.Server"
+          elif [ "$TARGET" = "web-host" ]; then
+            PATTERNS="Web.Host"
+          elif [ "$TARGET" = "ai-model" ]; then
+            PATTERNS="AI.Model"
+          else
+            PATTERNS="$TARGET"
+          fi
+
+          for RUN_LINE in $ALL_RUNS $QUEUED_RUNS $WAITING_RUNS; do
+            if [ -z "$RUN_LINE" ]; then continue; fi
+            RUN_ID=$(echo "$RUN_LINE" | cut -d'|' -f1)
+            RUN_NAME=$(echo "$RUN_LINE" | cut -d'|' -f2)
+            RUN_STATUS=$(echo "$RUN_LINE" | cut -d'|' -f3)
+
+            # Skip our own stop workflow
+            if echo "$RUN_NAME" | grep -qi "stop"; then continue; fi
+
+            if echo "$RUN_NAME" | grep -qiE "$PATTERNS"; then
+              echo "   Cancelling: $RUN_NAME (ID: $RUN_ID, Status: $RUN_STATUS)..."
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+                -H "Authorization: token $GH_TOKEN" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID/cancel")
+              if [ "$HTTP_CODE" = "202" ] || [ "$HTTP_CODE" = "204" ]; then
+                echo "   ✅ Cancelled! (HTTP $HTTP_CODE)"
                 CANCELLED=$((CANCELLED + 1))
+              else
+                echo "   ⚠️  Cancel returned HTTP $HTTP_CODE"
               fi
             fi
-          done < <(echo "$KEEPALIVE_RUNS" | jq -r '.[] | select(.name | test("Code-Server|VPS|Web Host|AI Model|Free GHA")) | .databaseId' 2>/dev/null)
+          done
+
+          # Also cancel any extend workflows that may be running
+          echo ""
+          echo "🔍 Checking extend workflows..."
+          for RUN_LINE in $ALL_RUNS $QUEUED_RUNS $WAITING_RUNS; do
+            if [ -z "$RUN_LINE" ]; then continue; fi
+            RUN_ID=$(echo "$RUN_LINE" | cut -d'|' -f1)
+            RUN_NAME=$(echo "$RUN_LINE" | cut -d'|' -f2)
+            if echo "$RUN_NAME" | grep -qi "extend"; then
+              echo "   Cancelling extend: $RUN_NAME (ID: $RUN_ID)..."
+              curl -s -o /dev/null -X POST \
+                -H "Authorization: token $GH_TOKEN" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID/cancel" 2>/dev/null || true
+            fi
+          done
 
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
