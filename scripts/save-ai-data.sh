@@ -193,7 +193,7 @@ if [ "$GITHUB_RELEASE_OK" = "false" ] && [ "$STORAGE" != "drive-only" ]; then
     git add ai-data.part-* split-info.json
   fi
 
-  echo "{\"last_session\": \"$TIMESTAMP\", \"archive_size\": $ARCHIVE_SIZE, \"type\": \"ai-model\", \"model\": \"${AI_MODEL:-gemma3:1b}\"}" > session-info.json
+  echo "{\"last_session\": \"$TIMESTAMP\", \"archive_size\": $ARCHIVE_SIZE, \"type\": \"ai-model\", \"model\": \"${AI_MODEL:-ollama}\", \"models\": \"${AI_MODELS:-${AI_MODEL:-ollama}}\"}" > session-info.json
   git add session-info.json
 
   git commit -m "🤖 AI data — $TIMESTAMP ($(numfmt --to=iec $ARCHIVE_SIZE))" 2>/dev/null || {
@@ -250,5 +250,5 @@ echo "  🗜️  Compressed: $(numfmt --to=iec $ARCHIVE_SIZE) ($COMPRESSION_RATI
 echo "  📤 GitHub Release: $([ "$GITHUB_RELEASE_OK" = "true" ] && echo "✅" || echo "⚠️  skipped")"
 echo "  ☁️  Google Drive:  $([ -n "$RCLONE_CONFIG_SECRET" ] && echo "✅" || echo "not configured")"
 echo "  📅 Time: $TIMESTAMP"
-echo "  🤖 Model: ${AI_MODEL:-gemma3:1b}"
+echo "  🤖 Model: ${AI_MODEL:-ollama}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

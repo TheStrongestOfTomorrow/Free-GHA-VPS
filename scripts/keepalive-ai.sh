@@ -161,7 +161,8 @@ ci_env_report() {
   echo "  Uptime: $(uptime -p 2>/dev/null || uptime)"
   echo "  Memory: $(free -h 2>/dev/null | awk '/Mem:/{print $3"/"$2}')"
   echo "  CPUs: $(nproc)"
-  echo "  Model: ${AI_MODEL:-gemma3:1b}"
+  echo "  Model: ${AI_MODEL:-ollama}"
+  echo "  All Models: ${AI_MODELS:-${AI_MODEL:-ollama}}"
   if command -v ollama &>/dev/null; then echo "  Ollama: $(ollama --version 2>/dev/null | head -1)"; fi
   if command -v python3 &>/dev/null; then echo "  Python: $(python3 --version)"; fi
   echo "::endgroup::"
@@ -244,7 +245,8 @@ restart_services() {
   if ! pgrep -f "chat-server.py" > /dev/null; then
     echo "⚠️  Chat UI crashed! Restarting..."
     export AI_PASSWORD="$(cat /tmp/ai-password.txt 2>/dev/null || echo '')"
-    export AI_MODEL="${AI_MODEL:-gemma3:1b}"
+    export AI_MODEL="${AI_MODEL:-ollama}"
+    export AI_MODELS="${AI_MODELS:-$AI_MODEL}"
     export CHAT_PORT="$CHAT_PORT"
     export OLLAMA_PORT="$OLLAMA_PORT"
     export OLLAMA_HOST="localhost"
@@ -305,7 +307,7 @@ while true; do
   [ $FILLED -gt 20 ] && FILLED=20
   EMPTY=$(( 20 - FILLED ))
   BAR=$(printf '#%.0s' $(seq 1 $FILLED 2>/dev/null) 2>/dev/null)$(printf '-%.0s' $(seq 1 $EMPTY 2>/dev/null) 2>/dev/null)
-  echo "⏳  [${BAR}] ${REMAINING} min left | extensions: ${EXTENSION_COUNT}/${MAX_EXTENSIONS} | model: ${AI_MODEL:-gemma3:1b}"
+  echo "⏳  [${BAR}] ${REMAINING} min left | extensions: ${EXTENSION_COUNT}/${MAX_EXTENSIONS} | model: ${AI_MODEL:-ollama}"
 
   # Short sleep
   sleep 10
