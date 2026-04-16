@@ -12,6 +12,7 @@ on:
           - 'code-server'
           - 'web-host'
           - 'ai-model'
+          - 'openclaw'
           - 'all'
       save_data:
         description: 'Save data before stopping?'
@@ -71,6 +72,7 @@ jobs:
           WF_MAP[code-server]="code-server.yml"
           WF_MAP[web-host]="web-host.yml"
           WF_MAP[ai-model]="ai-model.yml"
+          WF_MAP[openclaw]="openclaw.yml"
 
           CANCELLED=0
 
@@ -161,7 +163,7 @@ jobs:
 
           # Build name patterns to match
           if [ "$TARGET" = "all" ]; then
-            PATTERNS="VPS|Code.Server|Web.Host|AI.Model"
+            PATTERNS="VPS|Code.Server|Web.Host|AI.Model|OpenClaw"
           elif [ "$TARGET" = "vps" ]; then
             PATTERNS="VPS"
           elif [ "$TARGET" = "code-server" ]; then
@@ -170,6 +172,8 @@ jobs:
             PATTERNS="Web.Host"
           elif [ "$TARGET" = "ai-model" ]; then
             PATTERNS="AI.Model"
+          elif [ "$TARGET" = "openclaw" ]; then
+            PATTERNS="OpenClaw"
           else
             PATTERNS="$TARGET"
           fi

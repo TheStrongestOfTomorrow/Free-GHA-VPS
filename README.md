@@ -7,9 +7,9 @@
 [![GitHub Actions](https://img.shields.io/badge/GitHub-Actions-2088FF?logo=github&logoColor=white)](https://github.com/features/actions)
 [![Storage](https://img.shields.io/badge/Storage-Up%20to%2015GB-34A853?logo=googledrive&logoColor=white)](#-storage)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![4 Workflows](https://img.shields.io/badge/Workflows-4-purple)](#-workflows)
+[![5 Workflows](https://img.shields.io/badge/Workflows-5-purple)](#-workflows)
 
-🖥️ **Remote Desktop** · 💻 **Code Editor** · 🌐 **Web Hosting** · 🤖 **AI Models** · 📨 **Notifications** · 💾 **Up to 15GB** · ⚡ **Cached installs**
+🖥️ **Remote Desktop** · 💻 **Code Editor** · 🌐 **Web Hosting** · 🤖 **AI Models** · 🦞 **OpenClaw** · 📨 **Notifications** · 💾 **Up to 15GB** · ⚡ **Cached installs**
 
 </div>
 
@@ -17,16 +17,17 @@
 
 ## 🎯 What Is This?
 
-Free GHA VPS gives you **4 free services** powered by GitHub Actions runners:
+Free GHA VPS gives you **5 free services** powered by GitHub Actions runners:
 
 | Service | Description | Data Saved To |
 |---------|-------------|---------------|
 | 🖥️ **Free GHA VPS** | Full remote desktop (XFCE4) with 5 connection methods | `vps-data` branch |
-| 💻 **Code-Server** | Browser-based VS Code for coding on the go | `code-server-data` branch |
+| 💻 **Code-Server** | Browser-based VS Code with AI CLI tools | `code-server-data` branch |
 | 🌐 **Free Web Host** | Host any website/app with auto-detected framework | `web-data` branch |
 | 🤖 **AI Model (Gemma)** | Run Google Gemma models with browser chat UI | `ai-data` branch |
+| 🦞 **OpenClaw** | Run ANY Ollama model (Llama, Mistral, Phi, Gemma, etc.) | `openclaw-data` branch |
 
-All four share: 30-min sessions, extendable up to 3 hours, Discord + Telegram notifications, smart caching, and persistent storage.
+All five share: 30-min sessions, extendable up to 3 hours, Discord + Telegram notifications, smart caching, and persistent storage.
 
 ---
 
@@ -69,34 +70,11 @@ Full XFCE4 desktop with 5 ways to connect:
 5. **storage** — leave at `auto`
 6. **duration** — leave at `30`
 
-### ☁️ Cloudflare noVNC (Recommended — Zero Setup)
-
-No account, no secrets, nothing. Just run and click the URL.
-
-1. Set `connection` = `auto` or `novnc-cloudflare`
-2. Run → URL appears: `https://xxx.trycloudflare.com/vnc.html`
-3. Click → enter password → **you're in!**
-
-### 🔗 Chrome Remote Desktop (Best Quality)
-
-One-time auth setup, then it remembers you forever.
-
-1. Set `connection` = `chrome-remote-desktop`
-2. **First time:** Open [remotedesktop.google.com/headless](https://remotedesktop.google.com/headless) → Sign in → Copy the `--code` value → Paste in `auth_code` field
-3. **After that:** Just enter your PIN and run!
-
-### 🦎 Tailscale + xRDP (Real RDP Protocol)
-
-1. Sign up at [tailscale.com](https://tailscale.com) (free)
-2. Settings → Keys → Generate auth key (Reusable + Ephemeral)
-3. Add as GitHub secret: `TS_AUTHKEY`
-4. Set `connection` = `xrdp-tailscale` → Run → Connect with any RDP client!
-
 ---
 
 ## 💻 Code-Server (Browser VS Code)
 
-Lightweight coding environment — no desktop overhead, starts fast.
+Lightweight coding environment — no desktop overhead, starts fast. Now with **AI CLI tools** pre-installed!
 
 ### How to Run
 
@@ -104,19 +82,29 @@ Lightweight coding environment — no desktop overhead, starts fast.
 2. **password** — your code-server password (min 6 chars, or leave blank for auto)
 3. **tunnel** — `cloudflare` (default) or `localhost`
 4. **clone_repo** — (optional) paste a GitHub repo URL to auto-clone
-5. **duration** — leave at `30`
+5. **install_ai_tools** — `true` (default) to install Gemini CLI, Claude Code/OpenCode, Codex CLI + AI extensions
+6. **duration** — leave at `30`
 
-### What You Get
+### AI CLI Tools (New!)
 
-- Full VS Code in your browser
-- Terminal, extensions, Git integration
-- Workspace at `/home/runner/workspace`
-- Auto-saves all files and settings between sessions
-- Optional: auto-clone your repo on startup
+When `install_ai_tools` is enabled (default), the following are installed:
 
-### Connect
+| Tool | Description | Command | API Key Env |
+|------|-------------|---------|-------------|
+| **Gemini CLI** | Google's AI assistant | `gemini` or `./gemini-chat.sh` | `GEMINI_API_KEY` |
+| **Claude Code** | Anthropic's AI coding assistant | `claude` or `./claude-code.sh` | `ANTHROPIC_API_KEY` |
+| **OpenCode** | Open-source Claude Code alternative | `opencode` | `ANTHROPIC_API_KEY` |
+| **Codex CLI** | OpenAI's code generation tool | `codex` or `./codex-cli.sh` | `OPENAI_API_KEY` |
 
-A Cloudflare/localhost URL appears in the logs. Open it → enter password → code!
+### AI Code-Server Extensions
+
+These AI-powered VS Code extensions are installed automatically:
+
+- **Continue** — Open-source AI code assistant (works with any LLM)
+- **Roo Code** — AI-powered autonomous coding agent
+- **Cline** — AI dev assistant
+- **Gemini Code Assist** — Google's code assistant
+- **CodeGPT** — GPT integration for VS Code
 
 ---
 
@@ -134,38 +122,11 @@ Host any website or web app publicly via a Cloudflare tunnel.
 6. **tunnel** — `cloudflare` (default) or `localhost`
 7. **duration** — leave at `30`
 
-### Auto-Detection
-
-The system automatically detects your framework:
-
-| Detected | Framework | Server |
-|----------|-----------|--------|
-| `package.json` with build script | React, Next.js, Vite, etc. | Node (serve) |
-| `package.json` with start script | Express, etc. | Node (npm start) |
-| `requirements.txt` / `app.py` | Flask | Python |
-| `manage.py` | Django | Python |
-| No framework files | Static HTML/CSS/JS | Nginx |
-
-### Connect
-
-A public HTTPS URL appears in the logs. Share it, point a domain to it, or use it directly. Cloudflare tunnels provide **automatic HTTPS** — no SSL setup needed!
-
 ---
 
 ## 🤖 AI Model (Google Gemma)
 
 Run Google Gemma AI models directly in your browser with a beautiful chat interface. Powered by Ollama inference engine.
-
-### Supported Models
-
-| Model | Parameters | Download Size | Speed | Best For |
-|-------|:----------:|:-------------:|:-----:|----------|
-| **gemma3:1b** | 1B | ~800MB | ⚡⚡⚡ | Quick answers, lightweight tasks |
-| **gemma3:4b** | 4B | ~2.6GB | ⚡⚡ | Good balance of quality and speed |
-| **gemma2:2b** | 2B | ~1.5GB | ⚡⚡⚡ | Fast responses, decent quality |
-| **gemma2:9b** | 9B | ~5.3GB | ⚡ | Best quality (may be slow) |
-| **gemma:2b** | 2B | ~1.4GB | ⚡⚡⚡ | Original Gemma, fast |
-| **gemma:7b** | 7B | ~4.7GB | ⚡ | Original Gemma, quality |
 
 ### How to Run
 
@@ -175,42 +136,48 @@ Run Google Gemma AI models directly in your browser with a beautiful chat interf
 4. **tunnel** — `cloudflare` (default) or `localhost`
 5. **duration** — leave at `30`
 
+---
+
+## 🦞 OpenClaw (NEW — Any Ollama Model)
+
+Run **any** Ollama model — not just Gemma! Choose from Ollama's entire model library or select a Gemma model. Perfect for Llama, Mistral, Phi, DeepSeek, Qwen, and more.
+
+### How to Run
+
+1. Actions → **🦞 OpenClaw** → Run workflow
+2. **model_source** — `gemma` (select from list) or `ollama-custom` (type any model name)
+3. **ollama_model** — (only if source=ollama-custom) Type any Ollama model name (e.g. `llama3.2`, `mistral`, `phi4`, `deepseek-r1:7b`)
+4. **gemma_model** — (only if source=gemma) Pick from the Gemma dropdown
+5. **password** — your chat UI password (min 6 chars, or leave blank for auto)
+6. **tunnel** — `cloudflare` (default) or `localhost`
+7. **install_ai_tools** — (optional) Install AI CLI tools alongside the model
+8. **duration** — leave at `30`
+
+### Popular Ollama Models
+
+| Model | Parameters | Download | Best For |
+|-------|:----------:|:--------:|----------|
+| **llama3.2** | 3B | ~2GB | General chat, fast |
+| **llama3.1:8b** | 8B | ~4.7GB | High quality chat |
+| **mistral** | 7B | ~4.1GB | Balanced performance |
+| **phi4** | 14B | ~9GB | Reasoning tasks |
+| **deepseek-r1:7b** | 7B | ~4.7GB | Chain-of-thought reasoning |
+| **qwen2.5-coder** | 7B | ~4.4GB | Code generation |
+| **codellama** | 7B | ~3.8GB | Code completion |
+| **tinyllama** | 1.1B | ~637MB | Ultra-fast, lightweight |
+| **gemma3:1b** | 1B | ~815MB | Fast Gemma, recommended |
+
 ### Connect
 
-A URL appears in the workflow logs. Open it → enter password → start chatting!
-
-### Features
-
-- 🌐 **Browser Chat UI** — Beautiful dark theme, Markdown rendering, streaming responses
-- 🔌 **Ollama API** — Full Ollama-compatible API for programmatic access
-- 💬 **Chat History** — Conversations saved between sessions
-- 🔒 **Password Protected** — Your AI instance is private
-- ⚡ **Streaming** — See responses in real-time as they generate
-- 📊 **Inference Stats** — Monitor tokens/sec and model performance
-
-### API Access
-
-The AI model server exposes an Ollama-compatible API. Example:
-
-```bash
-# Generate text
-curl https://your-url.trycloudflare.com/api/generate \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{"model":"gemma3:1b","prompt":"Explain quantum computing"}'
-
-# Chat completion
-curl https://your-url.trycloudflare.com/api/chat \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{"model":"gemma3:1b","messages":[{"role":"user","content":"Hello!"}]}'
-```
+A URL appears in the workflow logs. Open it → enter password → start chatting with any model!
 
 ---
 
-All 4 workflows support session extension (up to 3 hours total):
+All 5 workflows support session extension (up to 3 hours total):
 
 1. Actions → **⏰ Extend Session** → Run
 2. Default: +30 minutes per extension (max 5 extensions)
-3. Works for VPS, Code-Server, Web Host, AND AI Model — the extend signal is universal!
+3. Works for VPS, Code-Server, Web Host, AI Model, AND OpenClaw — the extend signal is universal!
 
 ---
 
@@ -223,32 +190,18 @@ Get alerts on your phone/desktop when events happen — **zero dependencies, pur
 1. Open your Discord server → Server Settings → Integrations → Webhooks
 2. Create a webhook → Copy the URL
 3. Add as GitHub secret: `DISCORD_WEBHOOK_URL`
-4. Done! You'll get notifications for: start, ready, error, end, extend
 
 ### Setup Telegram
 
-1. Message [@BotFather](https://t.me/BotFather) on Telegram → `/newbot` → Get your **bot token**
-2. Message your bot to start a chat → Visit `https://api.telegram.org/bot<TOKEN>/getUpdates` → Find your **chat_id**
-3. Add as GitHub secrets:
-   - `TELEGRAM_BOT_TOKEN` — your bot token
-   - `TELEGRAM_CHAT_ID` — your chat ID
-4. Done!
-
-### What You'll Get Notified About
-
-| Event | Discord | Telegram |
-|-------|:-:|:-:|
-| 🚀 Session starting | ✅ | ✅ |
-| ✅ Ready / URL available | ✅ | ✅ |
-| ⏰ Session extended | ✅ | ✅ |
-| 👋 Session ended | ✅ | ✅ |
-| ❌ Errors | ✅ | ✅ |
+1. Message [@BotFather](https://t.me/BotFather) → `/newbot` → Get your **bot token**
+2. Message your bot → Visit `https://api.telegram.org/bot<TOKEN>/getUpdates` → Find your **chat_id**
+3. Add as GitHub secrets: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
 
 ---
 
 ## 💾 Storage
 
-All 4 workflows auto-save data between sessions using a 3-tier system:
+All 5 workflows auto-save data between sessions using a 3-tier system:
 
 | Tier | Storage | Setup | Best For |
 |------|---------|-------|----------|
@@ -256,40 +209,19 @@ All 4 workflows auto-save data between sessions using a 3-tier system:
 | **GitHub Only** | ~2GB | Zero | No Drive needed |
 | **Google Drive** | 15GB | One-time | Large projects, games |
 
-Data flow: `zstd compress → GitHub Release (2GB) → optional Google Drive (15GB)`
-Restore flow: `Release → branch → Drive` (first available wins)
-
-### Google Drive Setup (Optional)
-
-```bash
-# Install rclone
-curl https://rclone.org/install.sh | sudo bash
-
-# Configure Google Drive
-rclone config  # name: "gdrive", storage: Google Drive, scope: Full access
-
-# Get base64 config
-base64 -w 0 ~/.config/rclone/rclone.conf
-
-# Add as GitHub secret: RCLONE_CONFIG
-```
-
-Or run `bash scripts/rclone-setup.sh` locally for guided setup.
-
 ### Data Branches
-
-Each workflow saves to its own isolated branch — no conflicts:
 
 - 🖥️ VPS → `vps-data`
 - 💻 Code-Server → `code-server-data`
 - 🌐 Web Host → `web-data`
 - 🤖 AI Model → `ai-data`
+- 🦞 OpenClaw → `openclaw-data`
 
 ---
 
 ## 🔒 Concurrency Lock
 
-Only **one instance per workflow type** can run at a time. If you try to start a second VPS while one is running, it will queue. This prevents wasted Actions minutes.
+Only **one instance per workflow type** can run at a time.
 
 ---
 
@@ -305,47 +237,18 @@ Only **one instance per workflow type** can run at a time. If you try to start a
 
 ---
 
-## ❓ Troubleshooting
-
-### "noVNC URL not showing"
-Wait 30 sec. Check the logs for the tunnel URL. If Cloudflare fails, try `novnc-localhost`.
-
-### "Tunnel URL doesn't load"
-Cloudflare quick tunnels can be slow in some regions. Try `novnc-localhost` or CRD/Tailscale.
-
-### "CRD not connecting"
-Complete the auth code step for first setup. Use the same PIN. Check workflow logs.
-
-### "Tailscale IP not showing"
-Verify your `TS_AUTHKEY` secret is valid and not expired. Generate a new key.
-
-### "Data not persisting"
-Check if the data branch exists. For Drive: verify `RCLONE_CONFIG` secret.
-
-### "Notifications not working"
-Verify secrets are set correctly. Discord: check webhook URL. Telegram: verify token + chat ID by visiting `https://api.telegram.org/bot<TOKEN>/getMe`
-
-### "AI model not responding"
-The first inference request may be slow as the model loads into memory. Try a smaller model like `gemma3:1b`. Check Ollama logs in the workflow output.
-
-### "AI model download fails"
-Larger models need more disk space. Try `gemma3:1b` (~800MB). Check your storage isn't full from previous sessions.
-
-### "Chat UI shows 'Offline'"
-The Ollama server may need a moment to start. Wait 30 seconds and refresh. If still offline, check the workflow logs for errors.
-
----
-
 ## 📁 Repo Structure
 
 ```
 Free-GHA-VPS/
 ├── .github/workflows/
 │   ├── vps.yml              # 🖥️ Remote desktop (5 connection methods)
-│   ├── code-server.yml      # 💻 Browser VS Code
+│   ├── code-server.yml      # 💻 Browser VS Code + AI CLI tools
 │   ├── web-host.yml         # 🌐 Web hosting
 │   ├── ai-model.yml         # 🤖 AI model inference (Gemma)
-│   └── extend.yml           # ⏰ Session extender (works for all 4)
+│   ├── openclaw.yml         # 🦞 Any Ollama model (Llama, Mistral, etc.)
+│   ├── extend.yml           # ⏰ Session extender (works for all 5)
+│   └── stop.yml             # 🛑 Stop any running session
 ├── scripts/
 │   ├── setup.sh             # VPS environment installer (cached)
 │   ├── configure-crd.sh     # Chrome Remote Desktop PIN + auth
@@ -356,8 +259,9 @@ Free-GHA-VPS/
 │   ├── tunnel-localhost.sh  # localhost.run tunnel
 │   ├── setup-xrdp.sh        # xRDP server
 │   ├── setup-tailscale.sh   # Tailscale VPN
-│   ├── setup-codeserver.sh  # Code-server installer (cached)
+│   ├── setup-codeserver.sh  # Code-server installer + base extensions (cached)
 │   ├── start-codeserver.sh  # Launch code-server
+│   ├── setup-ai-cli-tools.sh # AI CLI tools (Gemini, Claude, Codex)
 │   ├── keepalive-codeserver.sh  # Code-server keepalive + extension
 │   ├── save-codeserver-data.sh  # Save code-server workspace
 │   ├── setup-webhost.sh     # Web host installer (cached)
@@ -367,6 +271,9 @@ Free-GHA-VPS/
 │   ├── start-ai-model.sh    # Launch AI model + chat UI
 │   ├── keepalive-ai.sh       # AI model keepalive + monitoring
 │   ├── save-ai-data.sh       # Save AI chat history + config
+│   ├── setup-openclaw.sh     # OpenClaw installer (any Ollama model)
+│   ├── start-openclaw.sh     # Launch OpenClaw + chat UI (any model)
+│   ├── save-openclaw-data.sh # Save OpenClaw data
 │   ├── restore-data.sh      # Restore: Release → branch → Drive
 │   ├── save-data.sh         # Save: zstd → Release → Drive
 │   ├── keepalive.sh         # VPS timer + extension + auto-restart
@@ -381,26 +288,21 @@ Free-GHA-VPS/
 
 ## 🌟 All Features
 
-| Feature | VPS | Code-Server | Web Host | AI Model |
-|---------|:---:|:-----------:|:--------:|:--------:|
-| 🖥️ Full Desktop | ✅ | ❌ | ❌ | ❌ |
-| 💻 VS Code in Browser | ❌ | ✅ | ❌ | ❌ |
-| 🌐 Public Web Hosting | ❌ | ❌ | ✅ | ❌ |
-| 🤖 AI Model Inference | ❌ | ❌ | ❌ | ✅ |
-| 💬 Chat UI | ❌ | ❌ | ❌ | ✅ |
-| 📨 Discord Notifications | ✅ | ✅ | ✅ | ✅ |
-| 📨 Telegram Notifications | ✅ | ✅ | ✅ | ✅ |
-| 🗜️ zstd Compression | ✅ | ✅ | ✅ | ✅ |
-| ⚡ Package Cache | ✅ | ✅ | ✅ | ✅ |
-| 📤 GitHub Releases | ✅ | ✅ | ✅ | ✅ |
-| ☁️ Google Drive | ✅ | ✅ | ✅ | ✅ |
-| 💾 Data Persists | ✅ | ✅ | ✅ | ✅ |
-| ⏰ Extendable Sessions | ✅ | ✅ | ✅ | ✅ |
-| 🔒 Concurrency Lock | ✅ | ✅ | ✅ | ✅ |
-| 🔄 Auto Keepalive | ✅ | ✅ | ✅ | ✅ |
-| ☁️ Cloudflare Tunnel | ✅ | ✅ | ✅ | ✅ |
-| 📐 Resizable | ✅ | ❌ | ❌ | ❌ |
-| 🚀 Zero Cost | ✅ | ✅ | ✅ | ✅ |
+| Feature | VPS | Code-Server | Web Host | AI Model | OpenClaw |
+|---------|:---:|:-----------:|:--------:|:--------:|:--------:|
+| 🖥️ Full Desktop | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 💻 VS Code in Browser | ❌ | ✅ | ❌ | ❌ | ❌ |
+| 🌐 Public Web Hosting | ❌ | ❌ | ✅ | ❌ | ❌ |
+| 🤖 AI Model Inference | ❌ | ❌ | ❌ | ✅ | ✅ |
+| 🦞 Any Ollama Model | ❌ | ❌ | ❌ | ❌ | ✅ |
+| 🤖 AI CLI Tools | ❌ | ✅ | ❌ | ❌ | ✅ |
+| 💬 Chat UI | ❌ | ❌ | ❌ | ✅ | ✅ |
+| 📨 Discord Notifications | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 📨 Telegram Notifications | ✅ | ✅ | ✅ | ✅ | ✅ |
+| ⚡ Package Cache | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 💾 Data Persists | ✅ | ✅ | ✅ | ✅ | ✅ |
+| ⏰ Extendable Sessions | ✅ | ✅ | ✅ | ✅ | ✅ |
+| ☁️ Cloudflare Tunnel | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ---
 

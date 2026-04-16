@@ -35,6 +35,11 @@ on:
         required: false
         default: ''
         type: string
+      install_ai_tools:
+        description: '🤖 Install AI CLI tools in code-server (Gemini CLI, OpenCode/Claude Code, Codex CLI)'
+        required: false
+        default: true
+        type: boolean
   repository_dispatch:
     types: [start_codeserver]
 
@@ -66,24 +71,28 @@ jobs:
           TUNNEL="${{ github.event.inputs.tunnel }}"
           STORAGE="${{ github.event.inputs.storage }}"
           CLONE_REPO="${{ github.event.inputs.clone_repo }}"
+          INSTALL_AI_TOOLS="${{ github.event.inputs.install_ai_tools }}"
 
           PASSWORD="${PASSWORD:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.password // empty' 2>/dev/null)}"
           DURATION="${DURATION:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.duration // "30"' 2>/dev/null)}"
           TUNNEL="${TUNNEL:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.tunnel // "cloudflare"' 2>/dev/null)}"
           STORAGE="${STORAGE:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.storage // "github-only"' 2>/dev/null)}"
           CLONE_REPO="${CLONE_REPO:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.clone_repo // empty' 2>/dev/null)}"
+          INSTALL_AI_TOOLS="${INSTALL_AI_TOOLS:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.install_ai_tools // "true"' 2>/dev/null)}"
 
           DURATION="${DURATION:-30}"
           TUNNEL="${TUNNEL:-cloudflare}"
           STORAGE="${STORAGE:-github-only}"
+          INSTALL_AI_TOOLS="${INSTALL_AI_TOOLS:-true}"
 
           echo "password=$PASSWORD" >> $GITHUB_ENV
           echo "duration=$DURATION" >> $GITHUB_ENV
           echo "tunnel=$TUNNEL" >> $GITHUB_ENV
           echo "storage=$STORAGE" >> $GITHUB_ENV
           echo "clone_repo=$CLONE_REPO" >> $GITHUB_ENV
+          echo "install_ai_tools=$INSTALL_AI_TOOLS" >> $GITHUB_ENV
 
-          echo "✅ Inputs: Duration=${DURATION}min | Tunnel=$TUNNEL | Storage=$STORAGE"
+          echo "✅ Inputs: Duration=${DURATION}min | Tunnel=$TUNNEL | Storage=$STORAGE | AI Tools=$INSTALL_AI_TOOLS"
 
       # ── NOTIFICATIONS ────────────────────────────────────────
       - name: "📨 Notify: Session Starting"
@@ -131,6 +140,13 @@ jobs:
           fi
           chmod +x scripts/setup-codeserver.sh
           bash scripts/setup-codeserver.sh
+
+      # ── INSTALL AI CLI TOOLS ──────────────────────────────────
+      - name: 🤖 Install AI CLI Tools
+        if: env.install_ai_tools == 'true'
+        run: |
+          chmod +x scripts/setup-ai-cli-tools.sh
+          bash scripts/setup-ai-cli-tools.sh
 
       - name: 💾 Save Cache (first run)
         if: steps.cs-cache.outputs.cache-hit != 'true'

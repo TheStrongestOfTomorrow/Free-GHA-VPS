@@ -71,12 +71,31 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
   openssh-client \
   > /dev/null 2>&1 || true
 
+# ── Install useful code-server extensions (base set) ────────
+echo "📦 Installing base code-server extensions..."
+if command -v code-server &>/dev/null; then
+  # Essential extensions that work well in code-server
+  code-server --install-extension ms-python.python 2>/dev/null || true
+  code-server --install-extension ms-vscode.node-debug 2>/dev/null || true
+  code-server --install-extension esbenp.prettier-vscode 2>/dev/null || true
+  code-server --install-extension ms-vscode-remote.remote-ssh 2>/dev/null || true
+  code-server --install-extension formulahendry.code-runner 2>/dev/null || true
+  code-server --install-extension mtxr.sqltools 2>/dev/null || true
+  echo "   ✅ Base extensions installed"
+fi
+
 # ── Set up workspace directory ───────────────────────────────
 mkdir -p /home/runner/workspace
 sudo chown -R runner:runner /home/runner/workspace
 
 # ── Configure code-server ────────────────────────────────────
 mkdir -p /home/runner/.config/code-server
+
+# ── Ensure npm global bin is in PATH ─────────────────────────
+NPM_GLOBAL="$(npm config get prefix 2>/dev/null || echo "/usr/local")/bin"
+if ! echo "$PATH" | grep -q "$NPM_GLOBAL"; then
+  echo "export PATH=\"$NPM_GLOBAL:\$PATH\"" >> /home/runner/.bashrc 2>/dev/null || true
+fi
 
 echo "✅ Code-server setup complete!"
 echo "   Version: $(code-server --version 2>/dev/null || echo 'installed')"

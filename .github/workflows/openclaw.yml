@@ -1,0 +1,332 @@
+name: 🦞 OpenClaw (Ollama + Gemma)
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_source:
+        description: '🧠 Model source'
+        required: false
+        default: 'gemma'
+        type: choice
+        options:
+          - 'gemma'
+          - 'ollama-custom'
+      ollama_model:
+        description: '🦙 Ollama model name (only used if source=ollama-custom, e.g. llama3.2, mistral, phi4, deepseek-r1)'
+        required: false
+        default: 'llama3.2'
+        type: string
+      gemma_model:
+        description: '💎 Gemma model (only used if source=gemma)'
+        required: false
+        default: 'gemma3:1b'
+        type: choice
+        options:
+          # ── Gemma 4 (Latest) ──
+          - 'gemma4:e2b'
+          - 'gemma4:e4b'
+          - 'gemma4:26b'
+          - 'gemma4:31b'
+          # ── Gemma 3n (On-device) ──
+          - 'gemma3n:e2b'
+          - 'gemma3n:e4b'
+          # ── Gemma 3 ──
+          - 'gemma3:270m'
+          - 'gemma3:1b'
+          - 'gemma3:4b'
+          - 'gemma3:12b'
+          - 'gemma3:27b'
+          # ── Gemma 2 ──
+          - 'gemma2:2b'
+          - 'gemma2:9b'
+          - 'gemma2:27b'
+          # ── Gemma 1 ──
+          - 'gemma:2b'
+          - 'gemma:7b'
+          # ── CodeGemma (Code) ──
+          - 'codegemma:2b'
+          - 'codegemma:7b'
+      password:
+        description: '🔒 Chat UI password (min 6 chars, or leave blank for auto)'
+        required: false
+        default: ''
+        type: string
+      duration:
+        description: 'Session duration in minutes (max 30)'
+        required: false
+        default: '30'
+        type: string
+      tunnel:
+        description: '🌐 Tunnel method'
+        required: false
+        default: 'cloudflare'
+        type: choice
+        options:
+          - 'cloudflare'
+          - 'localhost'
+      storage:
+        description: '💾 Storage mode'
+        required: false
+        default: 'github-only'
+        type: choice
+        options:
+          - 'github-only'
+          - 'auto'
+          - 'drive-only'
+      install_ai_tools:
+        description: '🤖 Install AI CLI tools (Gemini CLI, OpenCode, Codex CLI) alongside model'
+        required: false
+        default: false
+        type: boolean
+  repository_dispatch:
+    types: [start_openclaw]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: openclaw
+  cancel-in-progress: false
+
+jobs:
+  openclaw:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      # ── NORMALIZE INPUTS ──────────────────────────────────────
+      - name: 🔄 Normalize Inputs
+        id: inputs
+        run: |
+          MODEL_SOURCE="${{ github.event.inputs.model_source }}"
+          OLLAMA_MODEL="${{ github.event.inputs.ollama_model }}"
+          GEMMA_MODEL="${{ github.event.inputs.gemma_model }}"
+          PASSWORD="${{ github.event.inputs.password }}"
+          DURATION="${{ github.event.inputs.duration }}"
+          TUNNEL="${{ github.event.inputs.tunnel }}"
+          STORAGE="${{ github.event.inputs.storage }}"
+          INSTALL_AI_TOOLS="${{ github.event.inputs.install_ai_tools }}"
+
+          # Fallback to repository_dispatch client_payload
+          MODEL_SOURCE="${MODEL_SOURCE:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.model_source // "gemma"' 2>/dev/null)}"
+          OLLAMA_MODEL="${OLLAMA_MODEL:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.ollama_model // "llama3.2"' 2>/dev/null)}"
+          GEMMA_MODEL="${GEMMA_MODEL:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.gemma_model // "gemma3:1b"' 2>/dev/null)}"
+          PASSWORD="${PASSWORD:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.password // empty' 2>/dev/null)}"
+          DURATION="${DURATION:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.duration // "30"' 2>/dev/null)}"
+          TUNNEL="${TUNNEL:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.tunnel // "cloudflare"' 2>/dev/null)}"
+          STORAGE="${STORAGE:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.storage // "github-only"' 2>/dev/null)}"
+          INSTALL_AI_TOOLS="${INSTALL_AI_TOOLS:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.install_ai_tools // "false"' 2>/dev/null)}"
+
+          # Defaults
+          MODEL_SOURCE="${MODEL_SOURCE:-gemma}"
+          OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.2}"
+          GEMMA_MODEL="${GEMMA_MODEL:-gemma3:1b}"
+          DURATION="${DURATION:-30}"
+          TUNNEL="${TUNNEL:-cloudflare}"
+          STORAGE="${STORAGE:-github-only}"
+          INSTALL_AI_TOOLS="${INSTALL_AI_TOOLS:-false}"
+
+          # Resolve the final model based on source
+          if [ "$MODEL_SOURCE" = "ollama-custom" ]; then
+            MODEL="$OLLAMA_MODEL"
+            MODEL_LABEL="Ollama/$OLLAMA_MODEL"
+          else
+            MODEL="$GEMMA_MODEL"
+            MODEL_LABEL="Gemma/$GEMMA_MODEL"
+          fi
+
+          echo "model_source=$MODEL_SOURCE" >> $GITHUB_ENV
+          echo "ollama_model=$OLLAMA_MODEL" >> $GITHUB_ENV
+          echo "gemma_model=$GEMMA_MODEL" >> $GITHUB_ENV
+          echo "model=$MODEL" >> $GITHUB_ENV
+          echo "model_label=$MODEL_LABEL" >> $GITHUB_ENV
+          echo "password=$PASSWORD" >> $GITHUB_ENV
+          echo "duration=$DURATION" >> $GITHUB_ENV
+          echo "tunnel=$TUNNEL" >> $GITHUB_ENV
+          echo "storage=$STORAGE" >> $GITHUB_ENV
+          echo "install_ai_tools=$INSTALL_AI_TOOLS" >> $GITHUB_ENV
+
+          echo "✅ Inputs: Source=$MODEL_SOURCE | Model=$MODEL | Duration=${DURATION}min | Tunnel=$TUNNEL"
+
+      # ── NOTIFICATIONS ────────────────────────────────────────
+      - name: "📨 Notify: OpenClaw Starting"
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          chmod +x scripts/notify.sh
+          bash scripts/notify.sh "start" \
+            "🦞 OpenClaw Starting" \
+            "Setting up AI inference server...\n🧠 Source: ${{ env.model_source }}\n🤖 Model: ${{ env.model_label }}\n⏱️ Duration: ${{ env.duration }} min" \
+            "3447003"
+
+      # ── CACHE ────────────────────────────────────────────────
+      - name: ⚡ Cache OpenClaw Packages
+        id: oc-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/oc-cache
+          key: oc-packages-v1-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            oc-packages-v1-${{ runner.os }}-
+
+      # ── RESTORE DATA ─────────────────────────────────────────
+      - name: ♻️ Restore OpenClaw Data
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
+          RCLONE_REMOTE: ${{ vars.RCLONE_REMOTE }}
+          STORAGE_MODE: ${{ env.storage }}
+          DATA_BRANCH: openclaw-data
+          RELEASE_TAG: openclaw-data
+        run: |
+          chmod +x scripts/restore-data.sh
+          bash scripts/restore-data.sh
+
+      # ── INSTALL OPENCLAW ─────────────────────────────────────
+      - name: 🦞 Install OpenClaw Environment
+        run: |
+          if [ "${{ steps.oc-cache.outputs.cache-hit }}" = "true" ]; then
+            echo "⚡ Cache hit! Fast install..."
+          else
+            echo "📦 Cache miss — full install..."
+          fi
+          chmod +x scripts/setup-openclaw.sh
+          bash scripts/setup-openclaw.sh "$MODEL" "$MODEL_SOURCE"
+
+      - name: 💾 Save Cache (first run)
+        if: steps.oc-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/oc-cache
+          key: oc-packages-v1-${{ runner.os }}-${{ github.run_id }}
+
+      # ── INSTALL AI CLI TOOLS (optional) ──────────────────────
+      - name: 🤖 Install AI CLI Tools
+        if: env.install_ai_tools == 'true'
+        run: |
+          chmod +x scripts/setup-ai-cli-tools.sh
+          bash scripts/setup-ai-cli-tools.sh
+
+      # ── RESTORE OPENCLAW FILES ─────────────────────────────
+      - name: ♻️ Restore OpenClaw Chat Data
+        run: |
+          if [ -d /tmp/restore-data ]; then
+            sudo mkdir -p /home/runner/openclaw-data
+            sudo cp -a /tmp/restore-data/openclaw-data /home/runner/ 2>/dev/null || true
+            sudo mkdir -p /home/runner/.ollama
+            sudo cp -a /tmp/restore-data/.ollama/modelfile /home/runner/.ollama/ 2>/dev/null || true
+            sudo chown -R runner:runner /home/runner/openclaw-data /home/runner/.ollama 2>/dev/null || true
+            echo "✅ OpenClaw chat data restored"
+          else
+            sudo mkdir -p /home/runner/openclaw-data
+          fi
+
+      # ── START OPENCLAW SERVER ───────────────────────────────
+      - name: 🚀 Start OpenClaw Server
+        env:
+          AI_PASSWORD: ${{ env.password }}
+          AI_MODEL: ${{ env.model }}
+          MODEL_SOURCE: ${{ env.model_source }}
+        run: |
+          chmod +x scripts/start-openclaw.sh
+          bash scripts/start-openclaw.sh "$AI_MODEL" "$AI_PASSWORD" "$MODEL_SOURCE"
+
+      # ── TUNNEL ───────────────────────────────────────────────
+      - name: ☁️ Cloudflare Tunnel
+        if: env.tunnel == 'cloudflare'
+        run: |
+          chmod +x scripts/tunnel-cloudflare.sh
+          bash scripts/tunnel-cloudflare.sh 11435
+
+      - name: 🌐 localhost.run Tunnel
+        if: env.tunnel == 'localhost'
+        run: |
+          chmod +x scripts/tunnel-localhost.sh
+          bash scripts/tunnel-localhost.sh 11435
+
+      # ── READY ────────────────────────────────────────────────
+      - name: ✅ OpenClaw is Ready
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          URL="${TUNNEL_URL:-https://pending.trycloudflare.com}"
+          PASS="${AI_PASSWORD:-$(cat /tmp/ai-password.txt 2>/dev/null || echo 'see-logs')}"
+          OLLAMA_URL="${URL}"
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  🦞  YOUR OPENCLAW AI IS NOW RUNNING!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  🧠 Source:    ${{ env.model_source }}"
+          echo "  🤖 Model:     ${{ env.model }}"
+          echo "  🔗 Chat URL:  ${URL}/"
+          echo "  🔌 API URL:   ${URL}/api (Ollama-compatible)"
+          echo "  🔑 Password:  $PASS"
+          echo "  ⏱️  Session:   ${{ env.duration }} minutes"
+          echo ""
+          echo "  💡 API Example:"
+          echo "      curl ${URL}/api/generate -d '{\"model\":\"${{ env.model }}\",\"prompt\":\"Hello!\"}'"
+          echo ""
+          echo "  💡 Extend: Run 'Extend Session' or send a dispatch!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          echo "::notice::🦞 OpenClaw READY! → ${URL}/ | Model: ${{ env.model }} | Password: $PASS"
+
+          chmod +x scripts/notify.sh
+          bash scripts/notify.sh "ready" \
+            "🦞 OpenClaw is Ready!" \
+            "🔗 [Open Chat](${URL}/)\n🧠 Source: \`${{ env.model_source }}\`\n🤖 Model: \`${{ env.model }}\`\n🔑 Password: \`${PASS}\`\n⏱️ Duration: ${{ env.duration }} min" \
+            "3066993"
+
+      # ── KEEPALIVE ────────────────────────────────────────────
+      - name: 🔄 Keepalive (Session Timer)
+        run: |
+          chmod +x scripts/keepalive-ai.sh
+          bash scripts/keepalive-ai.sh "$DURATION"
+
+      # ── SAVE DATA ────────────────────────────────────────────
+      - name: 💾 Save OpenClaw Data
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
+          RCLONE_REMOTE: ${{ vars.RCLONE_REMOTE }}
+          STORAGE_MODE: ${{ env.storage }}
+          DATA_BRANCH: openclaw-data
+          RELEASE_TAG: openclaw-data
+          RUNNER_HOME: /home/runner
+        run: |
+          chmod +x scripts/save-openclaw-data.sh
+          bash scripts/save-openclaw-data.sh
+
+      - name: "📨 Notify: OpenClaw Session Ended"
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          chmod +x scripts/notify.sh
+          bash scripts/notify.sh "end" \
+            "🦞 OpenClaw Session Ended" \
+            "Your AI session is over.\n💾 Data saved to \`openclaw-data\` branch.\n🔄 Run the workflow again to resume." \
+            "15105570"
+
+      # ── CLEANUP ──────────────────────────────────────────────
+      - name: 🧹 Cleanup
+        if: always()
+        run: |
+          sudo pkill -f ollama 2>/dev/null || true
+          sudo pkill -f "python3.*openclaw" 2>/dev/null || true
+          sudo pkill -f "python3.*chat-server" 2>/dev/null || true
+          sudo pkill -f cloudflared 2>/dev/null || true
