@@ -32,6 +32,41 @@ if [ -n "${GITHUB_ENV:-}" ]; then
   echo "AI_PASSWORD=$AI_PASS" >> "$GITHUB_ENV"
 fi
 
+# ── Create swap space to prevent OOM kills ──────────────────────
+echo "💾 Setting up swap space to prevent OOM kills..."
+if [ ! -f /swapfile ] || ! sudo swapon --show | grep -q swapfile; then
+  # Remove old swap if exists but corrupted
+  sudo swapoff /swapfile 2>/dev/null || true
+  sudo rm -f /swapfile 2>/dev/null || true
+  # Create 4GB swap file
+  sudo fallocate -l 4G /swapfile 2>/dev/null || \
+    sudo dd if=/dev/zero of=/swapfile bs=1M count=4096 status=progress 2>/dev/null
+  sudo chmod 600 /swapfile
+  sudo mkswap /swapfile 2>/dev/null
+  sudo swapon /swapfile 2>/dev/null
+  echo "   ✅ 4GB swap file created and activated"
+else
+  echo "   ✅ Swap file already active"
+fi
+
+# Show memory info
+free -h 2>/dev/null || true
+
+# ── Free up memory by killing unnecessary GHA services ──────────
+echo "🧹 Freeing up memory by stopping unnecessary services..."
+sudo systemctl stop mongod 2>/dev/null || true
+sudo systemctl stop mysql 2>/dev/null || true
+sudo systemctl stop postgresql 2>/dev/null || true
+sudo systemctl stop apache2 2>/dev/null || true
+sudo systemctl stop nginx 2>/dev/null || true
+sudo systemctl stop snapd 2>/dev/null || true
+sudo pkill -f 'ghcup' 2>/dev/null || true
+sudo pkill -f 'dart' 2>/dev/null || true
+sleep 1
+
+echo "   📊 Memory after cleanup:"
+free -h 2>/dev/null || true
+
 # ── Kill existing processes ──────────────────────────────────
 sudo pkill -9 -f ollama 2>/dev/null || true
 pkill -9 -f ollama 2>/dev/null || true

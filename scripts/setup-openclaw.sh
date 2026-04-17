@@ -68,6 +68,32 @@ fi
 echo "📦 Installing Python web dependencies..."
 pip3 install --quiet aiohttp 2>/dev/null || true
 
+# ── Create swap space to prevent OOM kills ──────────────────────
+echo "💾 Setting up swap space to prevent OOM kills..."
+if [ ! -f /swapfile ] || ! sudo swapon --show | grep -q swapfile; then
+  sudo swapoff /swapfile 2>/dev/null || true
+  sudo rm -f /swapfile 2>/dev/null || true
+  sudo fallocate -l 4G /swapfile 2>/dev/null || \
+    sudo dd if=/dev/zero of=/swapfile bs=1M count=4096 status=progress 2>/dev/null
+  sudo chmod 600 /swapfile
+  sudo mkswap /swapfile 2>/dev/null
+  sudo swapon /swapfile 2>/dev/null
+  echo "   ✅ 4GB swap file created and activated"
+else
+  echo "   ✅ Swap file already active"
+fi
+free -h 2>/dev/null || true
+
+# ── Free up memory ──────────────────────────────────────────────
+echo "🧹 Freeing up memory by stopping unnecessary services..."
+sudo systemctl stop mongod 2>/dev/null || true
+sudo systemctl stop mysql 2>/dev/null || true
+sudo systemctl stop postgresql 2>/dev/null || true
+sudo systemctl stop apache2 2>/dev/null || true
+sudo systemctl stop nginx 2>/dev/null || true
+sudo systemctl stop snapd 2>/dev/null || true
+sleep 1
+
 # ── Start Ollama server (needed for model pull) ──────────────
 echo "🚀 Starting Ollama server for model pull..."
 
