@@ -81,7 +81,12 @@ if command -v code-server &>/dev/null; then
   code-server --install-extension ms-vscode-remote.remote-ssh 2>/dev/null || true
   code-server --install-extension formulahendry.code-runner 2>/dev/null || true
   code-server --install-extension mtxr.sqltools 2>/dev/null || true
-  echo "   ✅ Base extensions installed"
+  # AI extensions (installed as part of base - always available)
+  code-server --install-extension Continue.continue 2>/dev/null || true
+  code-server --install-extension saoudrizwan.claude-dev 2>/dev/null || true
+  code-server --install-extension RooVeterinaryInc.roo-cline 2>/dev/null || true
+  code-server --install-extension GoogleCloudTools.cloudcode 2>/dev/null || true
+  echo "   ✅ Base extensions installed (including AI extensions)"
 fi
 
 # ── Set up workspace directory ───────────────────────────────

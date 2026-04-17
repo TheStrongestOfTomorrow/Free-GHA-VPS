@@ -70,8 +70,19 @@ pip3 install --quiet aiohttp 2>/dev/null || true
 
 # ── Start Ollama server (needed for model pull) ──────────────
 echo "🚀 Starting Ollama server for model pull..."
-pkill -f ollama 2>/dev/null || true
-sleep 1
+
+# Kill any existing Ollama processes and free port 11434
+sudo pkill -9 -f ollama 2>/dev/null || true
+pkill -9 -f ollama 2>/dev/null || true
+sleep 2
+
+# Ensure port 11434 is free - kill anything still holding it
+PORT_PID=$(sudo lsof -ti:11434 2>/dev/null || true)
+if [ -n "$PORT_PID" ]; then
+  echo "   🔓 Killing process $PORT_PID on port 11434..."
+  sudo kill -9 $PORT_PID 2>/dev/null || true
+  sleep 1
+fi
 
 # Set up Ollama data directory
 sudo mkdir -p /home/runner/.ollama
@@ -86,11 +97,24 @@ sleep 5
 
 # Verify Ollama is running
 if ! kill -0 $OLLAMA_PID 2>/dev/null; then
-  echo "❌ Ollama server failed to start!"
+  echo "⚠️  Ollama server failed to start on port 11434, trying alternate port..."
   cat /tmp/ollama.log
-  exit 1
+  # Try alternate port 11436
+  export OLLAMA_HOST="0.0.0.0:11436"
+  nohup ollama serve > /tmp/ollama.log 2>&1 &
+  OLLAMA_PID=$!
+  sleep 5
+  if ! kill -0 $OLLAMA_PID 2>/dev/null; then
+    echo "❌ Ollama server failed to start on alternate port too!"
+    cat /tmp/ollama.log
+    exit 1
+  fi
+  echo "   ✅ Ollama server running on alternate port 11436 (PID: $OLLAMA_PID)"
+  # Export the alternate port for downstream scripts
+  echo "OLLAMA_PORT=11436" >> "${GITHUB_ENV:-/dev/null}" || true
+else
+  echo "   ✅ Ollama server running (PID: $OLLAMA_PID)"
 fi
-echo "   ✅ Ollama server running (PID: $OLLAMA_PID)"
 
 # ── Pull the selected model ──────────────────────────────────
 echo "📦 Pulling model: $MODEL (source: $MODEL_SOURCE)..."

@@ -36,7 +36,7 @@ on:
         default: ''
         type: string
       install_ai_tools:
-        description: '🤖 Install AI CLI tools in code-server (Gemini CLI, OpenCode/Claude Code, Codex CLI)'
+        description: '🤖 Install AI CLI tools in code-server (Gemini CLI, Claude Code, OpenCode, Codex CLI + AI extensions)'
         required: false
         default: true
         type: boolean
@@ -141,8 +141,8 @@ jobs:
           chmod +x scripts/setup-codeserver.sh
           bash scripts/setup-codeserver.sh
 
-      # ── INSTALL AI CLI TOOLS ──────────────────────────────────
-      - name: 🤖 Install AI CLI Tools
+      # ── INSTALL AI CLI TOOLS + EXTENSIONS ───────────────────
+      - name: 🤖 Install AI CLI Tools + Code-Server Extensions
         if: env.install_ai_tools == 'true'
         run: |
           chmod +x scripts/setup-ai-cli-tools.sh

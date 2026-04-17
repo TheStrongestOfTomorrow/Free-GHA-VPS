@@ -69,8 +69,19 @@ pip3 install --quiet aiohttp 2>/dev/null || true
 
 # ── Start Ollama server (needed for model pull) ──────────────
 echo "🚀 Starting Ollama server for model pull..."
-pkill -f ollama 2>/dev/null || true
-sleep 1
+
+# Kill any existing Ollama processes and free port 11434
+sudo pkill -9 -f ollama 2>/dev/null || true
+pkill -9 -f ollama 2>/dev/null || true
+sleep 2
+
+# Ensure port 11434 is free - kill anything still holding it
+PORT_PID=$(sudo lsof -ti:11434 2>/dev/null || true)
+if [ -n "$PORT_PID" ]; then
+  echo "   🔓 Killing process $PORT_PID on port 11434..."
+  sudo kill -9 $PORT_PID 2>/dev/null || true
+  sleep 1
+fi
 
 # Set up Ollama data directory
 sudo mkdir -p /home/runner/.ollama
@@ -85,11 +96,23 @@ sleep 5
 
 # Verify Ollama is running
 if ! kill -0 $OLLAMA_PID 2>/dev/null; then
-  echo "❌ Ollama server failed to start!"
+  echo "⚠️  Ollama server failed to start on port 11434, trying alternate port..."
   cat /tmp/ollama.log
-  exit 1
+  # Try alternate port 11436
+  export OLLAMA_HOST="0.0.0.0:11436"
+  nohup ollama serve > /tmp/ollama.log 2>&1 &
+  OLLAMA_PID=$!
+  sleep 5
+  if ! kill -0 $OLLAMA_PID 2>/dev/null; then
+    echo "❌ Ollama server failed to start on alternate port too!"
+    cat /tmp/ollama.log
+    exit 1
+  fi
+  echo "   ✅ Ollama server running on alternate port 11436 (PID: $OLLAMA_PID)"
+  echo "OLLAMA_PORT=11436" >> "${GITHUB_ENV:-/dev/null}" || true
+else
+  echo "   ✅ Ollama server running (PID: $OLLAMA_PID)"
 fi
-echo "   ✅ Ollama server running (PID: $OLLAMA_PID)"
 
 # ── Pull the selected Gemma model ────────────────────────────
 echo "📦 Pulling model: $MODEL (this may take a few minutes on first run)..."
@@ -104,7 +127,7 @@ else
     BASE_MODEL=$(echo "$MODEL" | cut -d: -f1)
     ollama pull "$BASE_MODEL" 2>&1 || {
       echo "❌ Failed to pull model $MODEL"
-      echo "   Available Gemma models:"
+      echo "   Available Gemma models (ALL types):"
       echo "   ── Gemma 4 (Latest) ──────────────────────"
       echo "   - gemma4:e2b   (2B effective, ~5.6GB download)"
       echo "   - gemma4:e4b   (4B effective, ~7.5GB download)"
@@ -133,9 +156,17 @@ else
       echo "   - shieldgemma:2b  (2B params, ~1.7GB download)"
       echo "   - shieldgemma:9b  (9B params, ~5.8GB download)"
       echo "   - shieldgemma:27b (27B params, ~17GB download)"
+      echo "   ── RecurrentGemma (Efficient) ───────────"
+      echo "   - recurrentgemma:2b  (2B params, ~1.7GB download)"
+      echo "   - recurrentgemma:9b  (9B params, ~5.4GB download)"
+      echo "   - recurrentgemma:27b (27B params, ~16GB download)"
+      echo "   ── PaliGemma (Vision/Multimodal) ────────"
+      echo "   - paligemma:3b  (3B params, ~2.9GB download)"
+      echo "   - paligemma:10b (10B params, ~6.3GB download)"
+      echo "   - paligemma:22b (22B params, ~14GB download)"
       echo ""
       echo "   💡 Larger models (12B+) may not fit in GitHub Actions runners."
-      echo "   💡 Recommended for GHA: gemma3:1b, gemma3:4b, gemma3n:e2b, gemma4:e2b"
+      echo "   💡 Recommended for GHA: gemma3:1b, gemma3:4b, gemma3n:e2b, codegemma:2b"
       exit 1
     }
   }

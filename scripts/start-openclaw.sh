@@ -35,13 +35,25 @@ if [ -n "${GITHUB_ENV:-}" ]; then
 fi
 
 # ── Kill existing processes ──────────────────────────────────
-pkill -f ollama 2>/dev/null || true
+sudo pkill -9 -f ollama 2>/dev/null || true
+pkill -9 -f ollama 2>/dev/null || true
 pkill -f "python3.*chat-server" 2>/dev/null || true
 pkill -f "python3.*openclaw" 2>/dev/null || true
 sleep 2
 
+# Ensure port is free - kill anything still holding it
+PORT_PID=$(sudo lsof -ti:$OLLAMA_PORT 2>/dev/null || true)
+if [ -n "$PORT_PID" ]; then
+  echo "   🔓 Killing process $PORT_PID on port $OLLAMA_PORT..."
+  sudo kill -9 $PORT_PID 2>/dev/null || true
+  sleep 1
+fi
+
+# Use OLLAMA_PORT from env if set (alternate port fallback)
+OLLAMA_PORT="${OLLAMA_PORT:-11434}"
+
 # ── Start Ollama server ─────────────────────────────────────
-echo "🤖 Starting Ollama inference server..."
+echo "🤖 Starting Ollama inference server on port $OLLAMA_PORT..."
 export OLLAMA_HOST="0.0.0.0:$OLLAMA_PORT"
 export OLLAMA_MODELS="/home/runner/.ollama/models"
 nohup ollama serve > /tmp/ollama-server.log 2>&1 &
@@ -49,11 +61,24 @@ OLLAMA_PID=$!
 sleep 5
 
 if ! kill -0 $OLLAMA_PID 2>/dev/null; then
-  echo "❌ Ollama failed to start!"
+  echo "⚠️  Ollama failed to start on port $OLLAMA_PORT, trying port 11436..."
   cat /tmp/ollama-server.log
-  exit 1
+  OLLAMA_PORT=11436
+  export OLLAMA_HOST="0.0.0.0:11436"
+  nohup ollama serve > /tmp/ollama-server.log 2>&1 &
+  OLLAMA_PID=$!
+  sleep 5
+  if ! kill -0 $OLLAMA_PID 2>/dev/null; then
+    echo "❌ Ollama failed to start on alternate port too!"
+    cat /tmp/ollama-server.log
+    exit 1
+  fi
+  echo "   ✅ Ollama running on alternate port 11436 (PID: $OLLAMA_PID)"
+  export OLLAMA_PORT=11436
+  echo "OLLAMA_PORT=11436" >> "${GITHUB_ENV:-/dev/null}" || true
+else
+  echo "   ✅ Ollama running (PID: $OLLAMA_PID, port: $OLLAMA_PORT)"
 fi
-echo "   ✅ Ollama running (PID: $OLLAMA_PID, port: $OLLAMA_PORT)"
 
 # Wait for Ollama to be ready
 echo "   ⏳ Waiting for Ollama API..."

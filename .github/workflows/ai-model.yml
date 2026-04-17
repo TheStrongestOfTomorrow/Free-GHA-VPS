@@ -37,6 +37,14 @@ on:
           - 'shieldgemma:2b'
           - 'shieldgemma:9b'
           - 'shieldgemma:27b'
+          # ── RecurrentGemma (Efficient) ──
+          - 'recurrentgemma:2b'
+          - 'recurrentgemma:9b'
+          - 'recurrentgemma:27b'
+          # ── PaliGemma (Vision/Multimodal) ──
+          - 'paligemma:3b'
+          - 'paligemma:10b'
+          - 'paligemma:22b'
       password:
         description: '🔒 Chat UI password (min 6 chars, or leave blank for auto)'
         required: false
@@ -82,6 +90,20 @@ jobs:
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
+
+      # ── KILL STALE OLLAMA ON PORT 11434 ──────────────────────
+      - name: 🔓 Free Port 11434
+        run: |
+          echo "🔧 Ensuring port 11434 is free..."
+          sudo pkill -9 -f ollama 2>/dev/null || true
+          sleep 1
+          PORT_PID=$(sudo lsof -ti:11434 2>/dev/null || true)
+          if [ -n "$PORT_PID" ]; then
+            echo "   Killing process $PORT_PID on port 11434..."
+            sudo kill -9 $PORT_PID 2>/dev/null || true
+            sleep 1
+          fi
+          echo "   ✅ Port 11434 is free"
 
       # ── NORMALIZE INPUTS ──────────────────────────────────────
       - name: 🔄 Normalize Inputs
@@ -131,9 +153,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/ai-cache
-          key: ai-packages-v1-${{ runner.os }}-${{ github.run_id }}
+          key: ai-packages-v2-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
-            ai-packages-v1-${{ runner.os }}-
+            ai-packages-v2-${{ runner.os }}-
 
       # ── RESTORE DATA ─────────────────────────────────────────
       - name: ♻️ Restore AI Data
@@ -164,7 +186,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: /tmp/ai-cache
-          key: ai-packages-v1-${{ runner.os }}-${{ github.run_id }}
+          key: ai-packages-v2-${{ runner.os }}-${{ github.run_id }}
 
       # ── RESTORE AI FILES ───────────────────────────────────
       - name: ♻️ Restore AI Chat Data

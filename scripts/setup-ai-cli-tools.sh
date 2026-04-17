@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ============================================================
 #  Free GHA VPS - Install AI CLI Tools for Code-Server
-#  Installs Gemini CLI, OpenCode (open Claude Code), and Codex CLI
-#  Also installs them as code-server extensions where applicable
+#  Installs Gemini CLI, Claude Code / OpenCode, and Codex CLI
+#  Also installs AI code-server extensions (Continue, Cline, Roo Code, etc.)
 #  First run: ~2-3 min, cached: ~30 sec
 # ============================================================
 set -euo pipefail
@@ -26,17 +26,23 @@ fi
 NPM_GLOBAL="$(npm config get prefix 2>/dev/null || echo "/usr/local")/bin"
 export PATH="$NPM_GLOBAL:$PATH"
 
+# Ensure npm global bin is in .bashrc for future sessions
+if ! grep -q "$NPM_GLOBAL" /home/runner/.bashrc 2>/dev/null; then
+  echo "export PATH=\"$NPM_GLOBAL:\$PATH\"" >> /home/runner/.bashrc 2>/dev/null || true
+fi
+
 # ── 1. Install Gemini CLI ────────────────────────────────────
 echo "📦 Installing Gemini CLI..."
 if command -v gemini &>/dev/null; then
   echo "   ✅ Gemini CLI already installed"
 else
+  # Google's official Gemini CLI package
   npm install -g @anthropic-ai/gemini-cli 2>/dev/null || \
   npm install -g @google/gemini-cli 2>/dev/null || \
   npm install -g gemini-cli 2>/dev/null || {
-    echo "   ⚠️  Gemini CLI npm package not found, installing from GitHub..."
-    npm install -g github:anthropics/gemini-cli 2>/dev/null || {
-      echo "   ⚠️  Gemini CLI install failed — will be available via npx"
+    echo "   ⚠️  Gemini CLI npm package not found, trying alternative..."
+    npm install -g github:google-gemini/gemini-cli 2>/dev/null || {
+      echo "   ℹ️  Gemini CLI will be available via: npx @google/gemini-cli"
     }
   }
   if command -v gemini &>/dev/null; then
@@ -46,8 +52,20 @@ else
   fi
 fi
 
-# ── 2. Install OpenCode (open-source Claude Code alternative) ─
-echo "📦 Installing OpenCode (open Claude Code)..."
+# ── 2. Install Claude Code (official Anthropic) ──────────────
+echo "📦 Installing Claude Code..."
+if command -v claude &>/dev/null; then
+  echo "   ✅ Claude Code already installed"
+else
+  npm install -g @anthropic-ai/claude-code 2>/dev/null && {
+    echo "   ✅ Claude Code installed: $(claude --version 2>/dev/null || echo 'ok')"
+  } || {
+    echo "   ℹ️  Claude Code available via: npx @anthropic-ai/claude-code"
+  }
+fi
+
+# ── 3. Install OpenCode (open-source Claude Code alternative) ─
+echo "📦 Installing OpenCode (open Claude Code alternative)..."
 if command -v opencode &>/dev/null; then
   echo "   ✅ OpenCode already installed"
 else
@@ -64,10 +82,7 @@ else
       sudo cp "$TOOLS_DIR/opencode" /usr/local/bin/opencode
       echo "   ✅ OpenCode installed from release"
     else
-      # Fallback: install via Go or just make it available via npx
-      npm install -g @anthropic-ai/claude-code 2>/dev/null && echo "   ✅ Claude Code (official) installed" || {
-        echo "   ℹ️  OpenCode/Claude Code available via: npx @anthropic-ai/claude-code"
-      }
+      echo "   ℹ️  OpenCode available via: npx opencode"
     fi
   }
   if command -v opencode &>/dev/null; then
@@ -75,19 +90,7 @@ else
   fi
 fi
 
-# Also try to install Claude Code official (works with API key)
-echo "📦 Installing Claude Code..."
-if command -v claude &>/dev/null; then
-  echo "   ✅ Claude Code already installed"
-else
-  npm install -g @anthropic-ai/claude-code 2>/dev/null && {
-    echo "   ✅ Claude Code installed: $(claude --version 2>/dev/null || echo 'ok')"
-  } || {
-    echo "   ℹ️  Claude Code available via: npx @anthropic-ai/claude-code"
-  }
-fi
-
-# ── 3. Install Codex CLI ─────────────────────────────────────
+# ── 4. Install Codex CLI (OpenAI) ────────────────────────────
 echo "📦 Installing Codex CLI..."
 if command -v codex &>/dev/null; then
   echo "   ✅ Codex CLI already installed"
@@ -104,7 +107,7 @@ else
   fi
 fi
 
-# ── 4. Install code-server AI extensions ─────────────────────
+# ── 5. Install code-server AI extensions ─────────────────────
 echo "📦 Installing code-server AI extensions..."
 
 # Helper function to install a VSIX extension
@@ -117,7 +120,6 @@ install_cs_extension() {
   if command -v code-server &>/dev/null; then
     code-server --install-extension "$ext_id" 2>/dev/null && \
       echo "   ✅ $ext_name installed via code-server" || {
-      # Fallback: download and install manually
       echo "   ⚠️  Extension install failed via code-server, trying marketplace download..."
     }
   fi
@@ -126,11 +128,11 @@ install_cs_extension() {
 # Install Continue (open-source AI code assistant - works with any LLM)
 install_cs_extension "Continue.continue" "Continue (AI Code Assistant)"
 
+# Install Cline (AI coding assistant - works with Claude, OpenAI, etc.)
+install_cs_extension "saoudrizwan.claude-dev" "Cline (AI Dev Assistant)"
+
 # Install Roo Code (AI-powered autonomous coding agent)
 install_cs_extension "RooVeterinaryInc.roo-cline" "Roo Code (AI Agent)"
-
-# Install Cline (AI coding assistant)
-install_cs_extension "saoudrizwan.claude-dev" "Cline (AI Dev Assistant)"
 
 # Install Gemini Code Assist extension
 install_cs_extension "GoogleCloudTools.cloudcode" "Gemini Code Assist"
@@ -141,7 +143,13 @@ install_cs_extension "GitHub.copilot" "GitHub Copilot" 2>/dev/null || true
 # Install CodeGPT
 install_cs_extension "DanielSanMedium.dscodegpt" "CodeGPT" 2>/dev/null || true
 
-# ── 5. Create helper scripts in workspace ─────────────────────
+# Install Cody (Sourcegraph AI assistant)
+install_cs_extension "sourcegraph.cody-ai" "Cody (Sourcegraph AI)" 2>/dev/null || true
+
+# Install Twinny (local AI code completion)
+install_cs_extension "rjmacarthy.twinny" "Twinny (Local AI)" 2>/dev/null || true
+
+# ── 6. Create helper scripts in workspace ─────────────────────
 echo "📝 Creating AI CLI helper scripts..."
 mkdir -p /home/runner/workspace
 
@@ -171,6 +179,18 @@ else
 fi
 CLAUDE_EOF
 
+# OpenCode launcher
+cat > /home/runner/workspace/opencode.sh <<'OPENCODE_EOF'
+#!/usr/bin/env bash
+# Launch OpenCode - Open-source Claude Code alternative
+# Set ANTHROPIC_API_KEY or other provider keys before using
+if command -v opencode &>/dev/null; then
+  opencode "$@"
+else
+  npx opencode "$@"
+fi
+OPENCODE_EOF
+
 # Codex CLI launcher
 cat > /home/runner/workspace/codex-cli.sh <<'CODEX_EOF'
 #!/usr/bin/env bash
@@ -183,9 +203,9 @@ else
 fi
 CODEX_EOF
 
-chmod +x /home/runner/workspace/gemini-chat.sh /home/runner/workspace/claude-code.sh /home/runner/workspace/codex-cli.sh
+chmod +x /home/runner/workspace/gemini-chat.sh /home/runner/workspace/claude-code.sh /home/runner/workspace/opencode.sh /home/runner/workspace/codex-cli.sh
 
-# ── 6. Create AI tools README ────────────────────────────────
+# ── 7. Create AI tools README ────────────────────────────────
 cat > /home/runner/workspace/AI-TOOLS-README.md <<'README_EOF'
 # 🤖 AI CLI Tools
 
@@ -202,7 +222,7 @@ export GEMINI_API_KEY="your-key-here"
 # or: npx @google/gemini-cli
 ```
 
-## Claude Code / OpenCode
+## Claude Code
 ```bash
 # Set your API key first
 export ANTHROPIC_API_KEY="your-key-here"
@@ -211,6 +231,17 @@ export ANTHROPIC_API_KEY="your-key-here"
 ./claude-code.sh
 # or: claude
 # or: npx @anthropic-ai/claude-code
+```
+
+## OpenCode (Open Claude Code Alternative)
+```bash
+# Set your API key first
+export ANTHROPIC_API_KEY="your-key-here"
+
+# Run OpenCode
+./opencode.sh
+# or: opencode
+# or: npx opencode
 ```
 
 ## Codex CLI (OpenAI)
@@ -227,10 +258,12 @@ export OPENAI_API_KEY="your-key-here"
 ## VS Code Extensions
 The following AI extensions are installed in code-server:
 - **Continue** — Open-source AI code assistant (works with any LLM)
+- **Cline** — AI dev assistant (works with Claude, OpenAI, etc.)
 - **Roo Code** — AI-powered autonomous coding agent
-- **Cline** — AI dev assistant
 - **Gemini Code Assist** — Google's code assistant
 - **CodeGPT** — GPT integration for VS Code
+- **Cody** — Sourcegraph AI assistant
+- **Twinny** — Local AI code completion
 README_EOF
 
 sudo chown -R runner:runner /home/runner/workspace /home/runner/.local/share/code-server 2>/dev/null || true

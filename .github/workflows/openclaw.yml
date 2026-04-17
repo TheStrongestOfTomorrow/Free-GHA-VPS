@@ -17,7 +17,7 @@ on:
         default: 'llama3.2'
         type: string
       gemma_model:
-        description: '💎 Gemma model (only used if source=gemma)'
+        description: '💎 Primary Gemma model (Public - only used if source=gemma)'
         required: false
         default: 'gemma3:1b'
         type: choice
@@ -46,6 +46,66 @@ on:
           # ── CodeGemma (Code) ──
           - 'codegemma:2b'
           - 'codegemma:7b'
+          # ── ShieldGemma (Safety) ──
+          - 'shieldgemma:2b'
+          - 'shieldgemma:9b'
+          - 'shieldgemma:27b'
+          # ── RecurrentGemma (Efficient) ──
+          - 'recurrentgemma:2b'
+          - 'recurrentgemma:9b'
+          - 'recurrentgemma:27b'
+          # ── PaliGemma (Vision/Multimodal) ──
+          - 'paligemma:3b'
+          - 'paligemma:10b'
+          - 'paligemma:22b'
+      gemma_model_private:
+        description: '🔒 Secondary Gemma model (Private - 2nd model to install, or "none")'
+        required: false
+        default: 'none'
+        type: choice
+        options:
+          - 'none'
+          # ── Gemma 4 (Latest) ──
+          - 'gemma4:e2b'
+          - 'gemma4:e4b'
+          - 'gemma4:26b'
+          - 'gemma4:31b'
+          # ── Gemma 3n (On-device) ──
+          - 'gemma3n:e2b'
+          - 'gemma3n:e4b'
+          # ── Gemma 3 ──
+          - 'gemma3:270m'
+          - 'gemma3:1b'
+          - 'gemma3:4b'
+          - 'gemma3:12b'
+          - 'gemma3:27b'
+          # ── Gemma 2 ──
+          - 'gemma2:2b'
+          - 'gemma2:9b'
+          - 'gemma2:27b'
+          # ── Gemma 1 ──
+          - 'gemma:2b'
+          - 'gemma:7b'
+          # ── CodeGemma (Code) ──
+          - 'codegemma:2b'
+          - 'codegemma:7b'
+          # ── ShieldGemma (Safety) ──
+          - 'shieldgemma:2b'
+          - 'shieldgemma:9b'
+          - 'shieldgemma:27b'
+          # ── RecurrentGemma (Efficient) ──
+          - 'recurrentgemma:2b'
+          - 'recurrentgemma:9b'
+          - 'recurrentgemma:27b'
+          # ── PaliGemma (Vision/Multimodal) ──
+          - 'paligemma:3b'
+          - 'paligemma:10b'
+          - 'paligemma:22b'
+      ollama_model_private:
+        description: '🔒 Secondary Ollama model (Private - 2nd model if source=ollama-custom, or "none")'
+        required: false
+        default: 'none'
+        type: string
       password:
         description: '🔒 Chat UI password (min 6 chars, or leave blank for auto)'
         required: false
@@ -76,7 +136,7 @@ on:
       install_ai_tools:
         description: '🤖 Install AI CLI tools (Gemini CLI, OpenCode, Codex CLI) alongside model'
         required: false
-        default: false
+        default: true
         type: boolean
   repository_dispatch:
     types: [start_openclaw]
@@ -97,6 +157,20 @@ jobs:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
+      # ── KILL STALE OLLAMA ON PORT 11434 ──────────────────────
+      - name: 🔓 Free Port 11434
+        run: |
+          echo "🔧 Ensuring port 11434 is free..."
+          sudo pkill -9 -f ollama 2>/dev/null || true
+          sleep 1
+          PORT_PID=$(sudo lsof -ti:11434 2>/dev/null || true)
+          if [ -n "$PORT_PID" ]; then
+            echo "   Killing process $PORT_PID on port 11434..."
+            sudo kill -9 $PORT_PID 2>/dev/null || true
+            sleep 1
+          fi
+          echo "   ✅ Port 11434 is free"
+
       # ── NORMALIZE INPUTS ──────────────────────────────────────
       - name: 🔄 Normalize Inputs
         id: inputs
@@ -104,6 +178,8 @@ jobs:
           MODEL_SOURCE="${{ github.event.inputs.model_source }}"
           OLLAMA_MODEL="${{ github.event.inputs.ollama_model }}"
           GEMMA_MODEL="${{ github.event.inputs.gemma_model }}"
+          GEMMA_MODEL_PRIVATE="${{ github.event.inputs.gemma_model_private }}"
+          OLLAMA_MODEL_PRIVATE="${{ github.event.inputs.ollama_model_private }}"
           PASSWORD="${{ github.event.inputs.password }}"
           DURATION="${{ github.event.inputs.duration }}"
           TUNNEL="${{ github.event.inputs.tunnel }}"
@@ -114,42 +190,66 @@ jobs:
           MODEL_SOURCE="${MODEL_SOURCE:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.model_source // "gemma"' 2>/dev/null)}"
           OLLAMA_MODEL="${OLLAMA_MODEL:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.ollama_model // "llama3.2"' 2>/dev/null)}"
           GEMMA_MODEL="${GEMMA_MODEL:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.gemma_model // "gemma3:1b"' 2>/dev/null)}"
+          GEMMA_MODEL_PRIVATE="${GEMMA_MODEL_PRIVATE:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.gemma_model_private // "none"' 2>/dev/null)}"
+          OLLAMA_MODEL_PRIVATE="${OLLAMA_MODEL_PRIVATE:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.ollama_model_private // "none"' 2>/dev/null)}"
           PASSWORD="${PASSWORD:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.password // empty' 2>/dev/null)}"
           DURATION="${DURATION:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.duration // "30"' 2>/dev/null)}"
           TUNNEL="${TUNNEL:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.tunnel // "cloudflare"' 2>/dev/null)}"
           STORAGE="${STORAGE:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.storage // "github-only"' 2>/dev/null)}"
-          INSTALL_AI_TOOLS="${INSTALL_AI_TOOLS:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.install_ai_tools // "false"' 2>/dev/null)}"
+          INSTALL_AI_TOOLS="${INSTALL_AI_TOOLS:-$(echo '${{ toJSON(github.event.client_payload) }}' | jq -r '.install_ai_tools // "true"' 2>/dev/null)}"
 
           # Defaults
           MODEL_SOURCE="${MODEL_SOURCE:-gemma}"
           OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.2}"
           GEMMA_MODEL="${GEMMA_MODEL:-gemma3:1b}"
+          GEMMA_MODEL_PRIVATE="${GEMMA_MODEL_PRIVATE:-none}"
+          OLLAMA_MODEL_PRIVATE="${OLLAMA_MODEL_PRIVATE:-none}"
           DURATION="${DURATION:-30}"
           TUNNEL="${TUNNEL:-cloudflare}"
           STORAGE="${STORAGE:-github-only}"
-          INSTALL_AI_TOOLS="${INSTALL_AI_TOOLS:-false}"
+          INSTALL_AI_TOOLS="${INSTALL_AI_TOOLS:-true}"
 
-          # Resolve the final model based on source
+          # Resolve the primary model based on source
           if [ "$MODEL_SOURCE" = "ollama-custom" ]; then
             MODEL="$OLLAMA_MODEL"
             MODEL_LABEL="Ollama/$OLLAMA_MODEL"
+            # Resolve private/secondary model
+            if [ "$OLLAMA_MODEL_PRIVATE" = "none" ] || [ -z "$OLLAMA_MODEL_PRIVATE" ]; then
+              MODEL_PRIVATE=""
+              MODEL_PRIVATE_LABEL=""
+            else
+              MODEL_PRIVATE="$OLLAMA_MODEL_PRIVATE"
+              MODEL_PRIVATE_LABEL="Ollama/$OLLAMA_MODEL_PRIVATE"
+            fi
           else
             MODEL="$GEMMA_MODEL"
             MODEL_LABEL="Gemma/$GEMMA_MODEL"
+            # Resolve private/secondary Gemma model
+            if [ "$GEMMA_MODEL_PRIVATE" = "none" ] || [ -z "$GEMMA_MODEL_PRIVATE" ]; then
+              MODEL_PRIVATE=""
+              MODEL_PRIVATE_LABEL=""
+            else
+              MODEL_PRIVATE="$GEMMA_MODEL_PRIVATE"
+              MODEL_PRIVATE_LABEL="Gemma/$GEMMA_MODEL_PRIVATE"
+            fi
           fi
 
           echo "model_source=$MODEL_SOURCE" >> $GITHUB_ENV
           echo "ollama_model=$OLLAMA_MODEL" >> $GITHUB_ENV
           echo "gemma_model=$GEMMA_MODEL" >> $GITHUB_ENV
+          echo "gemma_model_private=$GEMMA_MODEL_PRIVATE" >> $GITHUB_ENV
+          echo "ollama_model_private=$OLLAMA_MODEL_PRIVATE" >> $GITHUB_ENV
           echo "model=$MODEL" >> $GITHUB_ENV
           echo "model_label=$MODEL_LABEL" >> $GITHUB_ENV
+          echo "model_private=$MODEL_PRIVATE" >> $GITHUB_ENV
+          echo "model_private_label=$MODEL_PRIVATE_LABEL" >> $GITHUB_ENV
           echo "password=$PASSWORD" >> $GITHUB_ENV
           echo "duration=$DURATION" >> $GITHUB_ENV
           echo "tunnel=$TUNNEL" >> $GITHUB_ENV
           echo "storage=$STORAGE" >> $GITHUB_ENV
           echo "install_ai_tools=$INSTALL_AI_TOOLS" >> $GITHUB_ENV
 
-          echo "✅ Inputs: Source=$MODEL_SOURCE | Model=$MODEL | Duration=${DURATION}min | Tunnel=$TUNNEL"
+          echo "✅ Inputs: Source=$MODEL_SOURCE | Primary=$MODEL | Private=$MODEL_PRIVATE | Duration=${DURATION}min | Tunnel=$TUNNEL"
 
       # ── NOTIFICATIONS ────────────────────────────────────────
       - name: "📨 Notify: OpenClaw Starting"
@@ -161,7 +261,7 @@ jobs:
           chmod +x scripts/notify.sh
           bash scripts/notify.sh "start" \
             "🦞 OpenClaw Starting" \
-            "Setting up AI inference server...\n🧠 Source: ${{ env.model_source }}\n🤖 Model: ${{ env.model_label }}\n⏱️ Duration: ${{ env.duration }} min" \
+            "Setting up AI inference server...\n🧠 Source: ${{ env.model_source }}\n🤖 Primary: ${{ env.model_label }}\n🔒 Private: ${{ env.model_private_label }}\n⏱️ Duration: ${{ env.duration }} min" \
             "3447003"
 
       # ── CACHE ────────────────────────────────────────────────
@@ -170,9 +270,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/oc-cache
-          key: oc-packages-v1-${{ runner.os }}-${{ github.run_id }}
+          key: oc-packages-v2-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
-            oc-packages-v1-${{ runner.os }}-
+            oc-packages-v2-${{ runner.os }}-
 
       # ── RESTORE DATA ─────────────────────────────────────────
       - name: ♻️ Restore OpenClaw Data
@@ -198,14 +298,35 @@ jobs:
           chmod +x scripts/setup-openclaw.sh
           bash scripts/setup-openclaw.sh "$MODEL" "$MODEL_SOURCE"
 
+      # ── PULL SECONDARY/PRIVATE MODEL ─────────────────────────
+      - name: 🔒 Pull Secondary Model (Private)
+        if: env.model_private != ''
+        run: |
+          echo "📦 Pulling secondary model: ${{ env.model_private }}..."
+          # Make sure Ollama is running
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          ollama pull "${{ env.model_private }}" 2>&1 || {
+            echo "⚠️  Failed to pull ${{ env.model_private }}, trying without tag..."
+            BASE_MODEL=$(echo "${{ env.model_private }}" | cut -d: -f1)
+            ollama pull "$BASE_MODEL" 2>&1 || {
+              echo "⚠️  Secondary model pull failed, continuing with primary only"
+            }
+          }
+          echo "✅ Secondary model pull complete"
+
       - name: 💾 Save Cache (first run)
         if: steps.oc-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: /tmp/oc-cache
-          key: oc-packages-v1-${{ runner.os }}-${{ github.run_id }}
+          key: oc-packages-v2-${{ runner.os }}-${{ github.run_id }}
 
-      # ── INSTALL AI CLI TOOLS (optional) ──────────────────────
+      # ── INSTALL AI CLI TOOLS ──────────────────────────────────
       - name: 🤖 Install AI CLI Tools
         if: env.install_ai_tools == 'true'
         run: |
@@ -231,6 +352,7 @@ jobs:
         env:
           AI_PASSWORD: ${{ env.password }}
           AI_MODEL: ${{ env.model }}
+          AI_MODEL_PRIVATE: ${{ env.model_private }}
           MODEL_SOURCE: ${{ env.model_source }}
         run: |
           chmod +x scripts/start-openclaw.sh
@@ -259,13 +381,17 @@ jobs:
           URL="${TUNNEL_URL:-https://pending.trycloudflare.com}"
           PASS="${AI_PASSWORD:-$(cat /tmp/ai-password.txt 2>/dev/null || echo 'see-logs')}"
           OLLAMA_URL="${URL}"
+          PRIV_MODEL="${{ env.model_private }}"
 
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "  🦞  YOUR OPENCLAW AI IS NOW RUNNING!"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "  🧠 Source:    ${{ env.model_source }}"
-          echo "  🤖 Model:     ${{ env.model }}"
+          echo "  🤖 Primary:   ${{ env.model }}"
+          if [ -n "$PRIV_MODEL" ]; then
+            echo "  🔒 Private:   $PRIV_MODEL"
+          fi
           echo "  🔗 Chat URL:  ${URL}/"
           echo "  🔌 API URL:   ${URL}/api (Ollama-compatible)"
           echo "  🔑 Password:  $PASS"
@@ -273,16 +399,20 @@ jobs:
           echo ""
           echo "  💡 API Example:"
           echo "      curl ${URL}/api/generate -d '{\"model\":\"${{ env.model }}\",\"prompt\":\"Hello!\"}'"
+          if [ -n "$PRIV_MODEL" ]; then
+            echo "      curl ${URL}/api/generate -d '{\"model\":\"$PRIV_MODEL\",\"prompt\":\"Hello!\"}'"
+          fi
           echo ""
           echo "  💡 Extend: Run 'Extend Session' or send a dispatch!"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-          echo "::notice::🦞 OpenClaw READY! → ${URL}/ | Model: ${{ env.model }} | Password: $PASS"
+          echo "::notice::🦞 OpenClaw READY! → ${URL}/ | Primary: ${{ env.model }} | Private: ${PRIV_MODEL:-none} | Password: $PASS"
 
+          PRIV_DISPLAY="${PRIV_MODEL:+ | 🔒 Private: \`${PRIV_MODEL}\`}"
           chmod +x scripts/notify.sh
           bash scripts/notify.sh "ready" \
             "🦞 OpenClaw is Ready!" \
-            "🔗 [Open Chat](${URL}/)\n🧠 Source: \`${{ env.model_source }}\`\n🤖 Model: \`${{ env.model }}\`\n🔑 Password: \`${PASS}\`\n⏱️ Duration: ${{ env.duration }} min" \
+            "🔗 [Open Chat](${URL}/)\n🧠 Source: \`${{ env.model_source }}\`\n🤖 Primary: \`${{ env.model }}\`${PRIV_DISPLAY}\n🔑 Password: \`${PASS}\`\n⏱️ Duration: ${{ env.duration }} min" \
             "3066993"
 
       # ── KEEPALIVE ────────────────────────────────────────────
